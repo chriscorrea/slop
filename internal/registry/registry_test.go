@@ -95,7 +95,7 @@ func TestAllProvidersInitialization(t *testing.T) {
 	})
 
 	t.Run("Contains expected provider keys", func(t *testing.T) {
-		expectedProviders := []string{"cohere", "mistral", "ollama"}
+		expectedProviders := []string{"anthropic", "cohere", "groq", "mistral", "ollama", "openai"}
 
 		for _, providerName := range expectedProviders {
 			assert.Contains(t, AllProviders, providerName, "AllProviders should contain %s", providerName)
@@ -322,7 +322,7 @@ func TestGetAvailableProviders(t *testing.T) {
 	assert.NotEmpty(t, providers)
 
 	// check that expected providers are present
-	expectedProviders := []string{"cohere", "mistral", "ollama"}
+	expectedProviders := []string{"anthropic", "cohere", "groq", "mistral", "ollama", "openai"}
 	for _, expected := range expectedProviders {
 		assert.Contains(t, providers, expected)
 	}
@@ -347,6 +347,21 @@ func TestIsProviderRegistered(t *testing.T) {
 		{
 			name:         "Registered provider - ollama",
 			providerName: "ollama",
+			expected:     true,
+		},
+		{
+			name:         "Registered provider - anthropic",
+			providerName: "anthropic",
+			expected:     true,
+		},
+		{
+			name:         "Registered provider - openai",
+			providerName: "openai",
+			expected:     true,
+		},
+		{
+			name:         "Registered provider - groq",
+			providerName: "groq",
 			expected:     true,
 		},
 		{
@@ -389,6 +404,21 @@ func TestProviderRequiresAPIKey(t *testing.T) {
 			name:         "Ollama does not require API key",
 			providerName: "ollama",
 			expected:     false,
+		},
+		{
+			name:         "Anthropic requires API key",
+			providerName: "anthropic",
+			expected:     true,
+		},
+		{
+			name:         "OpenAI requires API key",
+			providerName: "openai",
+			expected:     true,
+		},
+		{
+			name:         "Groq requires API key",
+			providerName: "groq",
+			expected:     true,
 		},
 		{
 			name:         "Unknown provider defaults to false",

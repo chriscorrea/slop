@@ -5,20 +5,26 @@ import (
 	"log/slog"
 
 	"slop/internal/config"
+	"slop/internal/llm/anthropic"
 	"slop/internal/llm/cohere"
 	"slop/internal/llm/common"
+	"slop/internal/llm/groq"
 	"slop/internal/llm/mistral"
 	"slop/internal/llm/mock"
 	"slop/internal/llm/ollama"
+	"slop/internal/llm/openai"
 )
 
 // AllProviders contains registered LLM providers
 // TODO this is manually updated for now
 var AllProviders = map[string]common.Provider{
-	"cohere":  cohere.New(),
-	"mistral": mistral.New(),
-	"mock":    mock.New(),
-	"ollama":  ollama.New(),
+	"anthropic": anthropic.New(),
+	"cohere":    cohere.New(),
+	"groq":      groq.New(),
+	"mistral":   mistral.New(),
+	"mock":      mock.New(),
+	"ollama":    ollama.New(),
+	"openai":    openai.New(),
 }
 
 // CreateProvider creates a provider instance using the central registry
