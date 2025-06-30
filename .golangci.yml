@@ -2,22 +2,21 @@ run:
   timeout: 3m
   go: '1.24'
 
-formatters:
-  enable:
-    - gofmt
-    - goimports
-
 linters:
   disable-all: true
   enable:
+    # Linters from your original 'linters' section
     - govet
     - errcheck
     - staticcheck
     - unused
     - ineffassign
     - gosec
-    - gosimple 
+    - gosimple
     - gocritic
+    # Linters moved from the incorrect 'formatters' section
+    - gofmt
+    - goimports
 
 issues:
   max-same-issues: 5
@@ -37,4 +36,3 @@ issues:
       linters:
         - gosec
       text: "G306: Expect WriteFile permissions to be 0600 or less"
-      
