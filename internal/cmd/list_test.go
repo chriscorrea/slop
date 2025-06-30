@@ -272,7 +272,7 @@ func TestListCommand_CanonicalView(t *testing.T) {
 
 	// set --canonical flag
 	cmd.Flags().Bool("canonical", false, "Show canonical configuration paths")
-	cmd.Flags().Set("canonical", "true")
+	_ = cmd.Flags().Set("canonical", "true")
 
 	// exec with --canonical flag
 	err = listConfigCmd.RunE(cmd, []string{})

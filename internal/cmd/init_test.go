@@ -61,7 +61,7 @@ func setupProviderData(t *testing.T) func() {
 
 	// return cleanup function
 	return func() {
-		os.Chdir(originalDir)
+		_ = os.Chdir(originalDir)
 		os.RemoveAll(tempDir)
 	}
 }

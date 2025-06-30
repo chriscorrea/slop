@@ -443,7 +443,7 @@ func TestAdapterClient_Generate_ContextCancellation(t *testing.T) {
 		default:
 			// context not cancelled yet–send response
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"content": "response"}`))
+			_, _ = w.Write([]byte(`{"content": "response"}`))
 		}
 	}))
 	defer server.Close()
