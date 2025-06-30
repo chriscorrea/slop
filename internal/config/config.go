@@ -33,6 +33,8 @@ func NewManager() *Manager {
 	v.RegisterAlias("mistral-key", "providers.mistral.api_key")
 	v.RegisterAlias("cohere-key", "providers.cohere.api_key")
 	v.RegisterAlias("anthropic-key", "providers.anthropic.api_key")
+	v.RegisterAlias("openai-key", "providers.openai.api_key")
+	v.RegisterAlias("groq-key", "providers.groq.api_key")
 
 	// Bind provider API keys to intuitive environment variable names
 	_ = v.BindEnv("providers.mistral.api_key", "MISTRAL_API_KEY")
