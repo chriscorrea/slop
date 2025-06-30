@@ -1,0 +1,58 @@
+{
+  "providers": {
+    "anthropic": {
+      "name": "Anthropic",
+      "description": "Claude models from Anthropic",
+      "reference": "https://docs.anthropic.com/en/docs/about-claude/models/overview",
+      "models": {
+        "fast": "claude-3-5-haiku-latest",
+        "deep": "claude-sonnet-4-0"
+      }
+    },
+    "openai": {
+      "name": "OpenAI", 
+      "description": "GPT models from OpenAI",
+      "reference": "https://platform.openai.com/docs/models",
+      "models": {
+        "fast": "gpt-4.1-mini",
+        "deep": "o3"
+      }
+    },
+    "cohere": {
+      "name": "Cohere",
+      "description": "Command models from Cohere",
+      "reference": "https://docs.cohere.com/v2/docs/models",
+      "models": {
+        "fast": "command-r7b-12-2024",
+        "deep": "command-a-03-2025"
+      }
+    },
+    "mistral": {
+      "name": "Mistral",
+      "description": "Mistral models",
+      "reference": "https://docs.mistral.ai/getting-started/models/models_overview/",
+      "models": {
+        "fast": "mistral-small-2503",
+        "deep": "magistral-medium-2506"
+      }
+    },
+    "ollama": {
+      "name": "Ollama",
+      "description": "Local models via Ollama",
+      "reference": "https://ollama.com/library",
+      "models": {
+        "fast": "gemma3:latest",
+        "deep": "deepseek-r1:8b"
+      }
+    },
+    "groq": {
+      "name": "Groq",
+      "description": "High-speed inference models from Groq",
+      "reference": "https://console.groq.com/docs/models",
+      "models": {
+        "fast": "llama-3.1-8b-instant",
+        "deep": "llama-3.3-70b-versatile"
+      }
+    }
+  }
+}

@@ -1,0 +1,58 @@
+[parameters]
+temperature = 0.7
+max_tokens = 2048
+top_p = 1.0
+stop_sequences = ["\n\n", "STOP", "END"]
+stream = false
+system_prompt = """You are a helpful and concise command-line assistant, slop. 
+Provide direct answers without any preamble, conversational filler, or apologies"""
+default_model_type = "fast"
+default_location = "remote"
+timeout = 30
+max_retries = 1
+
+[models.remote.fast]
+provider = "mistral"
+name = "ministral-8b-latest"
+
+[models.remote.deep]
+provider = "mistral"
+name = "magistral-medium-latest"
+
+[models.local.fast]
+provider = "ollama"
+name = "gemma3:latest"
+
+[models.local.deep]
+provider = "ollama"
+name = "deepseek-r1:14b"
+
+[providers.anthropic]
+api_key = ""
+base_url = "https://api.anthropic.com/v1"
+api_version = "2023-06-01"
+max_retries = 2
+
+[providers.openai]
+api_key = ""
+base_url = "https://api.openai.com/v1"
+max_retries = 2
+
+[providers.cohere]
+api_key = ""
+base_url = "https://api.cohere.com/v2"
+max_retries = 2
+
+[providers.ollama]
+base_url = "http://127.0.0.1:11434"
+
+[providers.mistral]
+api_key = ""
+base_url = "https://api.mistral.ai/v1"
+max_retries = 2
+
+[format]
+json = false
+yaml = false
+md = false
+xml = false

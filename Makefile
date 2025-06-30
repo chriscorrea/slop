@@ -1,4 +1,4 @@
-.PHONY: build dependencies test test-race test-cover lint lint-ci tidy man clean install help
+.PHONY: build dependencies test test-race test-cover lint lint-ci lintfile tidy man clean install help
 
 help:
 	@echo "🐷 Available:"
@@ -9,6 +9,7 @@ help:
 	@echo "  test-cover  - Run tests with coverage report"
 	@echo "  lint        - Run linters (go vet, gofmt)"
 	@echo "  lint-ci     - Run golangci-lint (CI-grade linting)"
+	@echo "  lintfile    - Run golangci-lint on a specific file"
 	@echo "  tidy        - Clean up dependencies"
 	@echo "  man         - Generate man pages"
 	@echo "  clean       - Clean build artifacts"
@@ -49,6 +50,20 @@ lint:
 
 	$(info 🐷 running golangci-lint  )
 	golangci-lint run
+
+lintfile:
+	$(info 🐷 running golangci-lint on $(FILE) )
+	@if [ -z "$(FILE)" ]; then \
+		echo "Usage: make lintfile FILE=<file_path>"; \
+		echo "Example: make lintfile FILE=main.go"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(FILE)" ]; then \
+		echo "Error: File '$(FILE)' does not exist"; \
+		exit 1; \
+	fi
+
+	@golangci-lint run "$(FILE)"
 
 tidy:
 	$(info 🐷 clean up dependencies  )

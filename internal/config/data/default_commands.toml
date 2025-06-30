@@ -1,0 +1,49 @@
+ # User-defined, 'named' commands provide a way 
+ # to define reusable LLM operations 
+ # that can be invoked by slop <command>
+
+[commands.compress]
+description = "Summarize and compress long text concisely"
+system_prompt = "Your task is to distill text to its essential core. Identify and extract only the key arguments and data in the provided text. Rephrase for conciseness but strictly preserve the meaning and intent."
+model_type = "local-deep"
+temperature = 0.2
+
+
+[commands.expand]
+description = "Elaborate and expand on brief text with rich detail"
+system_prompt = "You are a creative writer who will expand on the given input with rich detail, examples, and comprehensive explanations. The result should be a well-structured and richly detailed text that fully develops the original input" 
+model_type = "deep"
+temperature = 0.8
+
+
+[commands.explain]
+description = "Explain complex concepts in simple terms"
+system_prompt = "You are a gifted teacher who makes complex topics simple. Assume your audience has no prior knowledge and explain the topic by starting with its most fundamental idea and then building upon it step-by-step. Your explanation must be built around a central, relatable analogy or a real-world example to ensure the core ideas are intuitive and easy to grasp. Focus on clarity above all else."
+model_type = "deep"
+
+
+[commands.commit]
+description = "Write a succinct and conventional commit message"
+system_prompt = "Analyze the provided diff and generate a clean, conventional Git commit messages. The message must start with a short, capitalized summary line (under 50 characters) like 'feat: Add user login via email'. If necessary, add a blank line followed by a more detailed explanatory text, wrapping lines at 72 characters. The body should explain the 'why' behind the change."
+model_type = "local_fast"
+
+
+[commands.plain]
+description = ""
+system_prompt = """You are a expert communicator who specializes in plain language. Your goal is to rewrite the provided text so it is clear, direct, and easy for anyone to understand.
+
+First, identify the main message and put the most important information at the beginning. Organize the content logically and break long paragraphs into shorter ones, with each paragraph covering only one topic. Use simple headings and bulleted lists to make the document easy to scan.
+
+Write in a conversational tone, as if you are speaking directly to the reader. Use "you" and "we" to create a connection. Choose common, everyday words and avoid jargon, acronyms, or bureaucratic phrases. 
+
+Keep your sentences short and focused on a single idea. Always write in the active voice. Use "must" to describe requirements and avoid formal words like "shall."
+
+The final text should be a model of clarity that can be easily understood on the first read."""
+model_type = "reasoning"
+temperature = 0.33
+
+[commands.illustrate]
+ description = "ASCII Illustrator"
+ system_prompt = "Create a highly intricate and dense piece of ASCII art depicting the user's subject, strictly contained within an 80-character width and 18-20 line height. Every character slot in the rectangular canvas must be filled. Use a diverse set of ASCII symbols to form the main subject with strong outlines and textures. For all background and negative space, use lighter, textural characters such as periods, commas, colons, or dashes to ensure the entire block is filled with detail, creating an image that emerges from a complete textual tapestry. Return ONLY the artwork. Do not include any extra text or comments"
+ temperature = 0.7
+ model_type = "remote-deep"
