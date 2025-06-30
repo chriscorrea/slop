@@ -135,7 +135,7 @@ func TestProcessContext_NilCommand(t *testing.T) {
 		}
 	}()
 
-	_ = manager.ProcessContext(nil, []string{"file.txt"})
+	_, _ = manager.ProcessContext(nil, []string{"file.txt"})
 	t.Fatal("Expected panic but function returned normally")
 }
 

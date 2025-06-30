@@ -175,7 +175,7 @@ func TestReadInput(t *testing.T) {
 				// Write content to pipe
 				go func() {
 					defer w.Close()
-					_ = w.WriteString(tt.stdinContent)
+					_, _ = w.WriteString(tt.stdinContent)
 				}()
 
 				stdin = r
