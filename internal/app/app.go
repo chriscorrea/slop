@@ -25,6 +25,8 @@ func enhanceSystemPromptForFormat(basePrompt string, format config.Format) strin
 	switch {
 	case format.JSON:
 		instruction = "You must format your entire response as a single, valid JSON object. Start your response with a single opening brace {"
+	case format.JSONL:
+		instruction = "You must format your response as newline-delimited JSON (JSONL). Each line must be a self-contained, valid JSON object. Do not use commas after each line; simply separate each JSON object with a newline."
 	case format.YAML:
 		instruction = "You must format your entire response as valid YAML. Do not include any text or formatting outside of the YAML structure."
 	case format.MD:

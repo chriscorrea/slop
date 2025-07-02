@@ -202,18 +202,19 @@ slop help [command-name]
 
 ### Output Formatting
 
+To receive a clean, structured response, simply add one of the following flags to your command. The tool will ensure properly formatted responses by guiding the model and cleaning the raw model output. 
+
 - `--json`: Format response as JSON
-  - **OpenAI/Mistral**: Uses provider-native JSON mode for guaranteed valid responses
-  - **Other providers**: Enhanced prompt-based formatting with automatic extraction
-- `--yaml`: Format response as YAML with intelligent prompt enhancement
-- `--md`: Format response as Markdown with intelligent prompt enhancement  
-- `--xml`: Format response as XML with intelligent prompt enhancement
+- `--jsonl`: Format response as newline-delimited JSONL
+- `--yaml`: Format response as YAML
+- `--md`: Format response as Markdown
+- `--xml`: Format response as XML
 
 Note: Format flags are mutually exclusive.
 
 ### Parameter Flags
 
-- `--temperature`: Sampling temperature (0.0-2.0)
+- `--temperature`: Sampling temperature
 - `--max-tokens`: Maximum response tokens
 - `--top-p`: Top-p sampling value
 - `--stop-sequences`: Stop sequences for generation

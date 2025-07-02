@@ -146,6 +146,7 @@ var rootCmd = &cobra.Command{
 			"deep":        "deep",
 			"temperature": "parameters.temperature",
 			"json":        "format.json",
+			"jsonl":       "format.jsonl",
 			"yaml":        "format.yaml",
 			"md":          "format.md",
 			"xml":         "format.xml",
@@ -228,6 +229,7 @@ func init() {
 
 	// Output formatting flags
 	rootCmd.PersistentFlags().Bool("json", false, "Format response as JSON")
+	rootCmd.PersistentFlags().Bool("jsonl", false, "Format response as JSONL (JSON Lines)")
 	rootCmd.PersistentFlags().Bool("yaml", false, "Format response as YAML")
 	rootCmd.PersistentFlags().Bool("md", false, "Format response as Markdown")
 	rootCmd.PersistentFlags().Bool("xml", false, "Format response as XML")
@@ -235,7 +237,7 @@ func init() {
 	// mark the mutually exclusive flags
 	rootCmd.MarkFlagsMutuallyExclusive("fast", "deep")
 	rootCmd.MarkFlagsMutuallyExclusive("local", "remote")
-	rootCmd.MarkFlagsMutuallyExclusive("json", "yaml", "md", "xml")
+	rootCmd.MarkFlagsMutuallyExclusive("json", "jsonl", "yaml", "md", "xml")
 
 	// list of flags to hide for now
 	flagsToHide := []string{"test", "stream"}

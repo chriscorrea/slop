@@ -53,6 +53,7 @@ max_retries = 2
 
 [format]
 json = false
+jsonl = false
 yaml = false
 md = false
 xml = false

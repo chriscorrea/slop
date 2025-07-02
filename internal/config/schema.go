@@ -217,6 +217,11 @@ func DefaultConfigSchema() *ConfigSchema {
 				Description: "Format response as JSON",
 				Default:     false,
 			},
+			"format.jsonl": {
+				Type:        reflect.TypeOf(bool(false)),
+				Description: "Format response as JSONL (newline-delimited JSON)",
+				Default:     false,
+			},
 			"format.yaml": {
 				Type:        reflect.TypeOf(bool(false)),
 				Description: "Format response as YAML",
@@ -270,6 +275,7 @@ func DefaultConfigSchema() *ConfigSchema {
 
 			// format aliases
 			"json":     "format.json",
+			"jsonl":    "format.jsonl",
 			"yaml":     "format.yaml",
 			"markdown": "format.md",
 			"md":       "format.md",

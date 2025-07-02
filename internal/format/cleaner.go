@@ -1,6 +1,7 @@
 package format
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -11,6 +12,10 @@ import (
 func CleanResponse(response string, format config.Format) string {
 	if format.JSON {
 		return CleanJSON(response)
+	}
+
+	if format.JSONL {
+		return CleanJSONL(response)
 	}
 
 	if format.YAML {
@@ -176,4 +181,57 @@ func CleanXML(response string) string {
 	}
 
 	return strings.TrimSpace(response[startIdx : endIdx+1])
+}
+
+// CleanJSONL extracts JSONL (JSON Lines), prioritizing markdown code fence
+func CleanJSONL(response string) string {
+	// first, check for a JSONL markdown code block
+	if strings.Contains(response, "```jsonl") {
+		startMarker := "```jsonl\n"
+		endMarker := "```"
+
+		startIdx := strings.Index(response, startMarker)
+		if startIdx == -1 {
+			// if ```jsonl is present but the newline is missing, adapt the search
+			startMarker = "```jsonl"
+			startIdx = strings.Index(response, startMarker)
+		}
+
+		// find the content after the start marker
+		contentAfterStart := response[startIdx+len(startMarker):]
+		endIdx := strings.Index(contentAfterStart, endMarker)
+
+		if endIdx != -1 {
+			// extract content from fence and validate each line
+			fenceContent := strings.TrimSpace(contentAfterStart[:endIdx])
+			return validateAndFilterJSONL(fenceContent)
+		}
+	}
+
+	// fallback: process the entire response line by line
+	return validateAndFilterJSONL(response)
+}
+
+// validateAndFilterJSONL processes text line by line, keeping only valid JSON lines
+func validateAndFilterJSONL(text string) string {
+	lines := strings.Split(text, "\n")
+	var validLines []string
+
+	for _, line := range lines {
+		// trim whitespace from each line
+		trimmedLine := strings.TrimSpace(line)
+
+		// skip empty lines
+		if trimmedLine == "" {
+			continue
+		}
+
+		// validate that the line is valid JSON
+		if json.Valid([]byte(trimmedLine)) {
+			validLines = append(validLines, trimmedLine)
+		}
+	}
+
+	// return the valid lines joined with newlines
+	return strings.Join(validLines, "\n")
 }

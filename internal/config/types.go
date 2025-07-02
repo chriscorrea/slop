@@ -31,10 +31,11 @@ type Parameters struct {
 
 // Format contains output formatting options
 type Format struct {
-	JSON bool `mapstructure:"json"`
-	YAML bool `mapstructure:"yaml"`
-	MD   bool `mapstructure:"md"`
-	XML  bool `mapstructure:"xml"`
+	JSON  bool `mapstructure:"json"`
+	JSONL bool `mapstructure:"jsonl"`
+	YAML  bool `mapstructure:"yaml"`
+	MD    bool `mapstructure:"md"`
+	XML   bool `mapstructure:"xml"`
 }
 
 // Models contains model configuration for different categories

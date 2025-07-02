@@ -84,6 +84,53 @@ func TestCleanJSON(t *testing.T) {
 	}
 }
 
+func TestCleanJSONL(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "Valid JSONL with multiple objects",
+			input:    "{\"character\": \"Napoleon\", \"species\": \"Pig\"}\n{\"character\": \"Boxer\", \"species\": \"Horse\"}",
+			expected: "{\"character\": \"Napoleon\", \"species\": \"Pig\"}\n{\"character\": \"Boxer\", \"species\": \"Horse\"}",
+		},
+		{
+			name:     "JSONL with mixed objects and arrays",
+			input:    "{\"character\": \"Snowball\", \"committee\": \"Egg Production Committee\"}\n[\"Beasts of England\", \"Comrade Napoleon\"]",
+			expected: "{\"character\": \"Snowball\", \"committee\": \"Egg Production Committee\"}\n[\"Beasts of England\", \"Comrade Napoleon\"]",
+		},
+		{
+			name:     "JSONL in markdown fence with surrounding text",
+			input:    "The pigs have taken over:\n```jsonl\n{\"leader\": \"Napoleon\", \"propagandist\": \"Squealer\"}\n{\"guard_dogs\": 9}\n```\nAll animals are equal.",
+			expected: "{\"leader\": \"Napoleon\", \"propagandist\": \"Squealer\"}\n{\"guard_dogs\": 9}",
+		},
+		{
+			name:     "Filters out invalid lines and surrounding text",
+			input:    "# The Seven Commandments\n{\"commandment\": 6, \"original\": \"No animal shall kill any other animal.\"}\nFour legs good, two legs bad.\n{\"commandment\": 7, \"revised\": \"All animals are equal, but some are more equal.\"}\r\nThey had changed!.",
+			expected: "{\"commandment\": 6, \"original\": \"No animal shall kill any other animal.\"}\n{\"commandment\": 7, \"revised\": \"All animals are equal, but some are more equal.\"}",
+		},
+		{
+			name:     "Handles empty lines between valid JSONL",
+			input:    "{\"name\": \"Benjamin\", \"species\": \"Donkey\"}\r\n\n{\"name\": \"Muriel\", \"species\": \"Goat\"}\n\n\n{\"name\": \"Clover\", \"species\": \"Horse\"}",
+			expected: "{\"name\": \"Benjamin\", \"species\": \"Donkey\"}\n{\"name\": \"Muriel\", \"species\": \"Goat\"}\n{\"name\": \"Clover\", \"species\": \"Horse\"}",
+		},
+		{
+			name:     "No valid JSONL lines returns an empty string",
+			input:    "I will work harder.\nNapoleon is always right.\n.",
+			expected: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := CleanJSONL(tt.input)
+			if result != tt.expected {
+				t.Errorf("CleanJSONL() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestCleanYAML(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -287,9 +334,27 @@ func TestCleanResponse(t *testing.T) {
 	}{
 		{
 			name:     "JSON format",
-			input:    "Here's your JSON: ```json\n{\"four_legs\": \"better\"}\n```",
+			input:    "Here's your JSON:\n```json\n{\"four_legs\": \"better\"}\n```\r\nThis is a postscript.",
 			format:   config.Format{JSON: true},
 			expected: `{"four_legs": "better"}`,
+		},
+		{
+			name:     "JSONL format with objects",
+			input:    "Here are your results: ```jsonl\n{\"character\": \"Napoleon\", \"species\": \"Pig\"}\n{\"character\": \"Boxer\", \"species\": \"Horse\"}\n```\nThis is a postscript.",
+			format:   config.Format{JSONL: true},
+			expected: "{\"character\": \"Napoleon\", \"species\": \"Pig\"}\n{\"character\": \"Boxer\", \"species\": \"Horse\"}",
+		},
+		{
+			name:     "JSONL format with arrays",
+			input:    "Here are your NDJSON results: ```jsonl\n[\"Napoleon\", \"Pig\"]\n[\"Boxer\", \"Horse\"]\r\n```\r\nThis is a postscript.",
+			format:   config.Format{JSONL: true},
+			expected: "[\"Napoleon\", \"Pig\"]\n[\"Boxer\", \"Horse\"]",
+		},
+		{
+			name:     "JSONL format with mixed arrays and objects",
+			input:    "Here is your JSONL: ```jsonl\n{\"character\": \"Snowball\", \"species\": \"Pig\"}\n[\"Old Major\", \"Pig\"]\n{\"motto\": \"I will work harder.\"}\r\n```\nThis is a postscript.",
+			format:   config.Format{JSONL: true},
+			expected: "{\"character\": \"Snowball\", \"species\": \"Pig\"}\n[\"Old Major\", \"Pig\"]\n{\"motto\": \"I will work harder.\"}",
 		},
 		{
 			name:     "YAML format",
@@ -318,7 +383,7 @@ func TestCleanResponse(t *testing.T) {
 		{
 			name:     "Multiple formats false",
 			input:    "Regular content that shouldn't be processed.",
-			format:   config.Format{JSON: false, YAML: false, MD: false, XML: false},
+			format:   config.Format{JSON: false, JSONL: false, YAML: false, MD: false, XML: false},
 			expected: "Regular content that shouldn't be processed.",
 		},
 	}
