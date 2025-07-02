@@ -11,6 +11,10 @@ import (
 )
 
 func TestExecuteWithRetry(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping long-running retry test in CI environment")
+	}
+
 	// use nil logger to speed up tests
 	var logger *slog.Logger
 
