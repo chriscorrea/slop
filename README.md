@@ -12,6 +12,7 @@ By integrating AI directly into your shell as a pipeline-native tool, you can bu
 - **Named commands**: Configure command shortcuts with your own custom system prompts
 - **Model selection**: Quickly switch between local or remote and fast or deep (reasoning) models
 - **Output formatting**: Specify JSON, Markdown, YAML, or XML for structured responses 
+- **Persistent project context**: Configure a directory with context files that are automatically embedded in every command
 - **Configuration management**: Define all settings in a TOML config file 
 
 ## Installation
@@ -97,6 +98,50 @@ Use the `-l` or `--local` flag to run models privately on your machine via Ollam
 slop --local "Elaborate on the concept of a 'Ghost in the Machine' with a 2-page report"
 ```
 
+#### Supported Model Providers
+Slop supports multiple LLM providers:
+
+**Local Providers:**
+- **[Ollama](https://ollama.com/)** for open-weight models including Llama, Gemma, Deepseek, and many others
+
+**Remote Providers:**
+
+- **[Anthropic](https://www.anthropic.com/)**
+- **[Cohere](https://cohere.com/)**
+- **[Groq](https://groq.com/)**
+- **[Mistral AI](https://mistral.ai/)**
+- **[OpenAI](https://openai.com/)**
+
+### Persistent Context
+
+You can set up **persistent context** that automatically includes relevant files in every slop command run from a project directory. This eliminates the need to manually specify context files.
+
+```bash
+# Set up project context by adding files
+slop context add README.md
+
+# Future slop commands in this directory will includes the file(s) as context
+slop "Explain the main functionality of this project"
+```
+
+The context is managed through a `.slop/context` manifest file.
+
+```bash
+# View current project context
+slop context list
+
+# Add more files or directories
+slop context add src/utils/ tests/integration/
+
+# Clear all project context
+slop context clear
+
+# Skip project context for a single command
+slop --ignore-context "Quick question without project files"
+```
+
+**Tip**: Project context files are sent as individual messages to the LLM, providing better structure and understanding compared to concatenated text.
+
 ## Configuration
 
 Slop uses TOML configuration files located at `~/.slop/config.toml` by default.
@@ -158,8 +203,6 @@ model_hint = "reasoning"
 temperature = 0.3
 ```
 
-## Commands
-
 ### Configuration Management
 
 ```bash
@@ -193,12 +236,13 @@ slop help [command-name]
 - `--config`: Path to config file
 - `--system`: System prompt override
 - `--context`: Context file paths (can be used multiple times)
-- `--local`: Use local LLM provider
-- `--remote`: Use remote LLM provider  
-- `--fast`: Use fast/light model
-- `--deep`: Use deep/reasoning model
+- `--ignore-context`, `-i`: Ignore automated project context for this command
+- `--local`, `-l`: Use local LLM provider
+- `--remote`, `-r`: Use remote LLM provider  
+- `--fast`, `-f`: Use fast/light model
+- `--deep`, `d`: Use deep/reasoning model
 - `--test`: Use mock provider for testing
-- `--verbose, -v`: Enable structured logging
+- `--verbose`,  `-v`: Enable structured logging
 
 ### Output Formatting
 
@@ -214,7 +258,7 @@ Note: Format flags are mutually exclusive.
 
 ### Parameter Flags
 
-- `--temperature`: Sampling temperature
-- `--max-tokens`: Maximum response tokens
-- `--top-p`: Top-p sampling value
-- `--stop-sequences`: Stop sequences for generation
+- `--temperature`: Sampling randomness (higher for more creative output)
+- `--max-tokens`: Maximum response length in tokens
+- `--top-p`: Nucleus sampling threshold (affects variety)
+- `--stop-sequences`: Stop sequences, or strings that terminate generation

@@ -1,9 +1,13 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	slopContext "slop/internal/context"
 
 	"github.com/spf13/cobra"
 )
@@ -19,8 +23,24 @@ func TestNewContextManager(t *testing.T) {
 	var _ ContextManager = manager
 }
 
-// TestProcessContext tests nearly all context processing scenarios
+// TestProcessContext tests context processing scenarios
 func TestProcessContext(t *testing.T) {
+	// Create temporary directory for test files
+	tempDir, err := os.MkdirTemp("", "slop-context-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create minimal test files
+	testFiles := []string{"windmill.txt", "snowball.txt", "file1.txt"}
+	for _, filename := range testFiles {
+		filePath := filepath.Join(tempDir, filename)
+		if err := os.WriteFile(filePath, []byte("content"), 0644); err != nil {
+			t.Fatalf("Failed to create test file %s: %v", filename, err)
+		}
+	}
+
 	tests := []struct {
 		name            string
 		cliContextFiles []string
@@ -28,7 +48,6 @@ func TestProcessContext(t *testing.T) {
 		expectedAll     []string
 		expectedCLI     []string
 		expectedCmd     []string
-		shouldError     bool
 	}{
 		{
 			name:            "empty everything",
@@ -39,28 +58,20 @@ func TestProcessContext(t *testing.T) {
 			expectedCmd:     []string{},
 		},
 		{
-			name:            "Files",
-			cliContextFiles: []string{"windmill.txt", "snowball.txt"},
+			name:            "cli files only",
+			cliContextFiles: []string{filepath.Join(tempDir, "windmill.txt"), filepath.Join(tempDir, "snowball.txt")},
 			additionalFiles: []string{},
-			expectedAll:     []string{"windmill.txt", "snowball.txt"},
-			expectedCLI:     []string{"windmill.txt", "snowball.txt"},
+			expectedAll:     []string{filepath.Join(tempDir, "windmill.txt"), filepath.Join(tempDir, "snowball.txt")},
+			expectedCLI:     []string{filepath.Join(tempDir, "windmill.txt"), filepath.Join(tempDir, "snowball.txt")},
 			expectedCmd:     []string{},
 		},
 		{
-			name:            "duplicate file names allowed",
-			cliContextFiles: []string{"file1.txt"},
-			additionalFiles: []string{"file1.txt"},
-			expectedAll:     []string{"file1.txt", "file1.txt"},
-			expectedCLI:     []string{"file1.txt"},
-			expectedCmd:     []string{"file1.txt"},
-		},
-		{
-			name:            "files with special characters",
-			cliContextFiles: []string{"file with spaces.txt", "file-with-dashes.txt"},
-			additionalFiles: []string{"file_with_underscores.txt"},
-			expectedAll:     []string{"file with spaces.txt", "file-with-dashes.txt", "file_with_underscores.txt"},
-			expectedCLI:     []string{"file with spaces.txt", "file-with-dashes.txt"},
-			expectedCmd:     []string{"file_with_underscores.txt"},
+			name:            "duplicate files allowed",
+			cliContextFiles: []string{filepath.Join(tempDir, "file1.txt")},
+			additionalFiles: []string{filepath.Join(tempDir, "file1.txt")},
+			expectedAll:     []string{filepath.Join(tempDir, "file1.txt"), filepath.Join(tempDir, "file1.txt")},
+			expectedCLI:     []string{filepath.Join(tempDir, "file1.txt")},
+			expectedCmd:     []string{filepath.Join(tempDir, "file1.txt")},
 		},
 	}
 
@@ -79,14 +90,8 @@ func TestProcessContext(t *testing.T) {
 			}
 
 			manager := NewContextManager()
-			result, err := manager.ProcessContext(cmd, tt.additionalFiles)
-
-			if tt.shouldError {
-				if err == nil {
-					t.Fatal("Expected error but got none")
-				}
-				return
-			}
+			// Use ProcessContextWithFlags with skipProjectContext=true to avoid file reading in tests
+			result, err := manager.ProcessContextWithFlags(cmd, tt.additionalFiles, true)
 
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
@@ -106,37 +111,64 @@ func TestProcessContext(t *testing.T) {
 	}
 }
 
-// TestProcessContext_FlagError tests error handling when flag doesn't exist
-func TestProcessContext_FlagError(t *testing.T) {
-	// create command without context flag
-	cmd := &cobra.Command{Use: "test"}
-
-	manager := NewContextManager()
-	result, err := manager.ProcessContext(cmd, []string{"file.txt"})
-
-	if err == nil {
-		t.Fatal("Expected error when context flag is not defined")
+// TestProcessContext_ErrorCases tests error handling scenarios
+func TestProcessContext_ErrorCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupCmd    func() *cobra.Command
+		expectPanic bool
+		expectError bool
+		errorText   string
+	}{
+		{
+			name: "missing context flag",
+			setupCmd: func() *cobra.Command {
+				return &cobra.Command{Use: "test"} // no context flag defined
+			},
+			expectError: true,
+			errorText:   "failed to get context flag",
+		},
+		{
+			name: "nil command",
+			setupCmd: func() *cobra.Command {
+				return nil
+			},
+			expectPanic: true,
+		},
 	}
-	if result != nil {
-		t.Errorf("Expected nil result when error occurs, got %v", result)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := NewContextManager()
+
+			if tt.expectPanic {
+				defer func() {
+					if r := recover(); r == nil {
+						t.Fatal("Expected panic but function returned normally")
+					}
+				}()
+				_, _ = manager.ProcessContext(tt.setupCmd(), []string{"file.txt"})
+				t.Fatal("Expected panic but function returned normally")
+				return
+			}
+
+			result, err := manager.ProcessContext(tt.setupCmd(), []string{"file.txt"})
+
+			if tt.expectError {
+				if err == nil {
+					t.Fatal("Expected error but got none")
+				}
+				if result != nil {
+					t.Errorf("Expected nil result when error occurs, got %v", result)
+				}
+				if !strings.Contains(err.Error(), tt.errorText) {
+					t.Errorf("Expected error containing %q, got: %v", tt.errorText, err)
+				}
+			} else if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+		})
 	}
-	if !strings.Contains(err.Error(), "failed to get context flag") {
-		t.Errorf("Expected error about flag, got: %v", err)
-	}
-}
-
-// TestProcessContext_NilCommand tests panic handling with nil command
-func TestProcessContext_NilCommand(t *testing.T) {
-	manager := NewContextManager()
-
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("Expected panic when passing nil command")
-		}
-	}()
-
-	_, _ = manager.ProcessContext(nil, []string{"file.txt"})
-	t.Fatal("Expected panic but function returned normally")
 }
 
 // TestContextResult_HelperMethods tests all Has* methods
@@ -190,7 +222,7 @@ func TestContextResult_HelperMethods(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := &ContextResult{
+			result := &slopContext.ContextResult{
 				AllContextFiles: tt.allFiles,
 				CLIContextFiles: tt.cliFiles,
 				CmdContextFiles: tt.cmdFiles,

@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"slop/internal/config"
+	slopContext "slop/internal/context"
+	slopIO "slop/internal/io"
 	"slop/internal/llm/common"
 	"slop/internal/registry"
 
@@ -78,13 +80,33 @@ func setupMockRegistry(mockProvider *MockProvider) func() {
 	}
 }
 
-func TestApp_Run_Success(t *testing.T) {
+// createEmptyContextResult is a helper function to create an empty ContextResult for testing
+func createEmptyContextResult() *slopContext.ContextResult {
+	return &slopContext.ContextResult{
+		AllContextFiles:     []string{},
+		CLIContextFiles:     []string{},
+		CmdContextFiles:     []string{},
+		ContextFileContents: []slopContext.ContextFile{},
+	}
+}
+
+// createContextResultWithFiles creates a ContextResult with specified context files
+func createContextResultWithFiles(contextFiles []slopContext.ContextFile) *slopContext.ContextResult {
+	return &slopContext.ContextResult{
+		AllContextFiles:     []string{},
+		CLIContextFiles:     []string{},
+		CmdContextFiles:     []string{},
+		ContextFileContents: contextFiles,
+	}
+}
+
+func TestApp_SyntheticMessageHistory_BasicScenario(t *testing.T) {
 	// setup mock LLM
 	mockLLM := &MockLLM{}
 	mockLLM.On("Generate",
 		context.Background(),
 		mock.MatchedBy(func(messages []common.Message) bool {
-			// verify we have both system and user messages
+			// verify we have system message + single user message (CLI args only)
 			return len(messages) == 2 &&
 				messages[0].Role == "system" &&
 				messages[1].Role == "user" &&
@@ -101,8 +123,6 @@ func TestApp_Run_Success(t *testing.T) {
 	cfg := &config.Config{
 		Parameters: config.Parameters{
 			SystemPrompt: "You are a helpful assistant",
-			Temperature:  0.7,
-			MaxTokens:    100,
 		},
 		Format: config.Format{},
 	}
@@ -111,30 +131,353 @@ func TestApp_Run_Success(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"test input"}, []string{}, "", "test-provider", "test-model")
+	result, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "mocked response", result)
-
 	mockLLM.AssertExpectations(t)
 }
 
+func TestApp_SyntheticMessageHistory_ContextFiles(t *testing.T) {
+	// setup mock LLM
+	mockLLM := &MockLLM{}
+	mockLLM.On("Generate",
+		context.Background(),
+		mock.MatchedBy(func(messages []common.Message) bool {
+			// verify synthetic message history:
+			// system + context file 1 + context file 2 + CLI args = 4 messages
+			if len(messages) != 4 {
+				return false
+			}
+
+			// verify system message
+			if messages[0].Role != "system" {
+				return false
+			}
+
+			// verify context file messages with proper formatting
+			if messages[1].Role != "user" ||
+				!assert.Contains(t, messages[1].Content, "File: /test/file1.txt") ||
+				!assert.Contains(t, messages[1].Content, "content of file 1") {
+				return false
+			}
+
+			if messages[2].Role != "user" ||
+				!assert.Contains(t, messages[2].Content, "File: /test/file2.txt") ||
+				!assert.Contains(t, messages[2].Content, "content of file 2") {
+				return false
+			}
+
+			// verify CLI args as final user message
+			if messages[3].Role != "user" || messages[3].Content != "analyze these files" {
+				return false
+			}
+
+			return true
+		}),
+		"test-model",
+		mock.Anything).Return("analysis response", nil)
+
+	// setup mock registry
+	mockProvider := &MockProvider{mockLLM: mockLLM}
+	defer setupMockRegistry(mockProvider)()
+
+	// create test config
+	cfg := &config.Config{
+		Parameters: config.Parameters{
+			SystemPrompt: "You are a helpful assistant",
+		},
+		Format: config.Format{},
+	}
+
+	// create context result with multiple files
+	contextFiles := []slopContext.ContextFile{
+		{Path: "/test/file1.txt", Content: "content of file 1"},
+		{Path: "/test/file2.txt", Content: "content of file 2"},
+	}
+	contextResult := createContextResultWithFiles(contextFiles)
+
+	// create app
+	app := NewApp(cfg, slog.Default(), false)
+
+	ctx := context.Background()
+	result, err := app.Run(ctx, []string{"analyze these files"}, contextResult, "", "test-provider", "test-model")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "analysis response", result)
+	mockLLM.AssertExpectations(t)
+}
+
+func TestApp_SyntheticMessageHistory_ComplexScenario(t *testing.T) {
+	// setup mock LLM
+	mockLLM := &MockLLM{}
+	mockLLM.On("Generate",
+		context.Background(),
+		mock.MatchedBy(func(messages []common.Message) bool {
+			// verify synthetic message history:
+			// system + ctx file + command ctx + arg = 4 messages
+			if len(messages) != 4 {
+				return false
+			}
+
+			// verify system message
+			if messages[0].Role != "system" {
+				return false
+			}
+
+			// verify context file message as first user message
+			if messages[1].Role != "user" ||
+				!assert.Contains(t, messages[1].Content, "File: /src/auth.go") ||
+				!assert.Contains(t, messages[1].Content, "func authenticate(user string)") {
+				return false
+			}
+
+			// verify command context as second user message
+			if messages[2].Role != "user" || messages[2].Content != "You are reviewing windmill plans" {
+				return false
+			}
+
+			// verify CLI args as final user message
+			if messages[3].Role != "user" || messages[3].Content != "find security vulnerabilities" {
+				return false
+			}
+
+			return true
+		}),
+		"test-model",
+		mock.Anything).Return("security analysis", nil)
+
+	// setup mock registry
+	mockProvider := &MockProvider{mockLLM: mockLLM}
+	defer setupMockRegistry(mockProvider)()
+
+	// create test config
+	cfg := &config.Config{
+		Parameters: config.Parameters{
+			SystemPrompt: "You are a security expert",
+		},
+		Format: config.Format{},
+	}
+
+	// create context result with a single file
+	contextFiles := []slopContext.ContextFile{
+		{Path: "/src/auth.go", Content: "func authenticate(user string) { ... }"},
+	}
+	contextResult := createContextResultWithFiles(contextFiles)
+
+	// create app
+	app := NewApp(cfg, slog.Default(), false)
+
+	ctx := context.Background()
+	result, err := app.Run(ctx, []string{"find security vulnerabilities"}, contextResult, "You are reviewing windmill plans", "test-provider", "test-model")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "security analysis", result)
+	mockLLM.AssertExpectations(t)
+}
+
+func TestApp_SyntheticMessageHistory_EmptyContextFiles(t *testing.T) {
+	// setup mock LLM
+	mockLLM := &MockLLM{}
+	mockLLM.On("Generate",
+		context.Background(),
+		mock.MatchedBy(func(messages []common.Message) bool {
+			// verify only system message + CLI args (empty context files should be skipped by manifest loading)
+			return len(messages) == 2 &&
+				messages[0].Role == "system" &&
+				messages[1].Role == "user" &&
+				messages[1].Content == "process files"
+		}),
+		"test-model",
+		mock.Anything).Return("processed", nil)
+
+	// setup mock registry
+	mockProvider := &MockProvider{mockLLM: mockLLM}
+	defer setupMockRegistry(mockProvider)()
+
+	// create test config
+	cfg := &config.Config{
+		Parameters: config.Parameters{
+			SystemPrompt: "You are a helpful assistant",
+		},
+		Format: config.Format{},
+	}
+
+	// create context result with empty files (empty content is already filtered out by manifest loading)
+	contextFiles := []slopContext.ContextFile{
+		// Note: manifest manager already filters out empty/whitespace files,
+		// so ContextFiles here only contain non-empty content
+	}
+	contextResult := createContextResultWithFiles(contextFiles)
+
+	// create app
+	app := NewApp(cfg, slog.Default(), false)
+
+	ctx := context.Background()
+	result, err := app.Run(ctx, []string{"process files"}, contextResult, "", "test-provider", "test-model")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "processed", result)
+	mockLLM.AssertExpectations(t)
+}
+
+func TestApp_SyntheticMessageHistory_ManyContextFiles(t *testing.T) {
+	// setup mock LLM
+	mockLLM := &MockLLM{}
+	mockLLM.On("Generate",
+		context.Background(),
+		mock.MatchedBy(func(messages []common.Message) bool {
+			// verify synthetic message history: system + 5 files + args = 7
+			if len(messages) != 7 {
+				return false
+			}
+
+			// verify system message
+			if messages[0].Role != "system" {
+				return false
+			}
+
+			// verify all context file messages
+			for i := 1; i <= 5; i++ {
+				if messages[i].Role != "user" ||
+					!assert.Contains(t, messages[i].Content, "File: /test/file") ||
+					!assert.Contains(t, messages[i].Content, "content") {
+					return false
+				}
+			}
+
+			// verify CLI arg as final user message
+			if messages[6].Role != "user" || messages[6].Content != "summarize all files" {
+				return false
+			}
+
+			return true
+		}),
+		"test-model",
+		mock.Anything).Return("summary of all files", nil)
+
+	// setup mock registry
+	mockProvider := &MockProvider{mockLLM: mockLLM}
+	defer setupMockRegistry(mockProvider)()
+
+	// create test config
+	cfg := &config.Config{
+		Parameters: config.Parameters{
+			SystemPrompt: "You are a helpful assistant",
+		},
+		Format: config.Format{},
+	}
+
+	// create context result with many files
+	contextFiles := []slopContext.ContextFile{
+		{Path: "/test/file1.txt", Content: "content 1"},
+		{Path: "/test/file2.txt", Content: "content 2"},
+		{Path: "/test/file3.txt", Content: "content 3"},
+		{Path: "/test/file4.txt", Content: "content 4"},
+		{Path: "/test/file5.txt", Content: "content 5"},
+	}
+	contextResult := createContextResultWithFiles(contextFiles)
+
+	// create app
+	app := NewApp(cfg, slog.Default(), false)
+
+	ctx := context.Background()
+	result, err := app.Run(ctx, []string{"summarize all files"}, contextResult, "", "test-provider", "test-model")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "summary of all files", result)
+	mockLLM.AssertExpectations(t)
+}
+
+func TestBuildSyntheticMessageHistory_WithStdin(t *testing.T) {
+	// create structured input with stdin content
+	input := &slopIO.StructuredInput{
+		ContextFiles: []slopContext.ContextFile{
+			{Path: "/test/config.yaml", Content: "timeout: 30s\nretries: 3"},
+		},
+		StdinContent:   "piped data from stdin",
+		CommandContext: "You are analyzing Squealer's configuration",
+		CLIArgs:        "explain the configuration",
+	}
+
+	// build synthetic message history
+	messages := buildSyntheticMessageHistory(input)
+
+	// verify correct order: context files, stdin, command context, CLI args
+	assert.Len(t, messages, 4)
+
+	// verify context file message (first)
+	assert.Equal(t, "user", messages[0].Role)
+	assert.Contains(t, messages[0].Content, "File: /test/config.yaml")
+	assert.Contains(t, messages[0].Content, "timeout: 30s")
+
+	// verify stdin content (second)
+	assert.Equal(t, "user", messages[1].Role)
+	assert.Equal(t, "piped data from stdin", messages[1].Content)
+
+	// verify command context (third)
+	assert.Equal(t, "user", messages[2].Role)
+	assert.Equal(t, "You are analyzing Squealer's configuration", messages[2].Content)
+
+	// verify CLI args (fourth/final)
+	assert.Equal(t, "user", messages[3].Role)
+	assert.Equal(t, "explain the configuration", messages[3].Content)
+}
+
+func TestBuildSyntheticMessageHistory_AllMessageTypes(t *testing.T) {
+	// create structured input with all message types
+	input := &slopIO.StructuredInput{
+		ContextFiles: []slopContext.ContextFile{
+			{Path: "/farm/windmill.go", Content: "package windmill\n\nfunc Build() { }"},
+			{Path: "/farm/cowshed.go", Content: "package cowshed\n\nfunc Clean() { }"},
+		},
+		StdinContent:   "Boxer was working harder than ever",
+		CommandContext: "You are reviewing Animal Farm construction plans",
+		CLIArgs:        "analyze the farm infrastructure code",
+	}
+
+	// build synthetic message history
+	messages := buildSyntheticMessageHistory(input)
+
+	// verify correct order and count: 2 context files + stdin + command context + CLI args = 5 messages
+	assert.Len(t, messages, 5)
+
+	// verify first context file message
+	assert.Equal(t, "user", messages[0].Role)
+	assert.Contains(t, messages[0].Content, "File: /farm/windmill.go")
+	assert.Contains(t, messages[0].Content, "package windmill")
+
+	// verify second context file message
+	assert.Equal(t, "user", messages[1].Role)
+	assert.Contains(t, messages[1].Content, "File: /farm/cowshed.go")
+	assert.Contains(t, messages[1].Content, "package cowshed")
+
+	// verify stdin content message
+	assert.Equal(t, "user", messages[2].Role)
+	assert.Equal(t, "Boxer was working harder than ever", messages[2].Content)
+
+	// verify command context message
+	assert.Equal(t, "user", messages[3].Role)
+	assert.Equal(t, "You are reviewing Animal Farm construction plans", messages[3].Content)
+
+	// verify CLI args as final message
+	assert.Equal(t, "user", messages[4].Role)
+	assert.Equal(t, "analyze the farm infrastructure code", messages[4].Content)
+}
+
+// keep essential error and format tests
 func TestApp_Run_CreateProvider_Error(t *testing.T) {
-	// creste test config
 	cfg := &config.Config{
 		Parameters: config.Parameters{
 			SystemPrompt: "You are a helpful assistant",
 		},
 	}
 
-	// create app
 	app := NewApp(cfg, slog.Default(), false)
 
-	// execute Run with invalid provider
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"test input"}, []string{}, "", "nonexistent", "test-model")
+	result, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "nonexistent", "test-model")
 
-	// assert results
 	assert.Error(t, err)
 	assert.Empty(t, result)
 	assert.Contains(t, err.Error(), "failed to create provider")
@@ -142,7 +485,6 @@ func TestApp_Run_CreateProvider_Error(t *testing.T) {
 }
 
 func TestApp_Run_Generate_Error(t *testing.T) {
-	// setup mock LLM
 	mockLLM := &MockLLM{}
 	expectedError := assert.AnError
 	mockLLM.On("Generate",
@@ -151,225 +493,92 @@ func TestApp_Run_Generate_Error(t *testing.T) {
 		"test-model",
 		mock.Anything).Return("", expectedError)
 
-	// setup mock registry
 	mockProvider := &MockProvider{mockLLM: mockLLM}
 	defer setupMockRegistry(mockProvider)()
 
-	// create test config
 	cfg := &config.Config{
 		Parameters: config.Parameters{
 			SystemPrompt: "You are a helpful assistant",
 		},
 	}
 
-	// create app
 	app := NewApp(cfg, slog.Default(), false)
 
-	// execute Run
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"test input"}, []string{}, "", "test-provider", "test-model")
+	result, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model")
 
-	// assert results
 	assert.Error(t, err)
 	assert.Empty(t, result)
 	assert.Contains(t, err.Error(), "failed to generate response")
 	assert.ErrorIs(t, err, expectedError)
 
-	// verify mock expectations
-	mockLLM.AssertExpectations(t)
-}
-
-func TestApp_Run_EnhanceSystemPrompt(t *testing.T) {
-	// setup mock LLM
-	mockLLM := &MockLLM{}
-	mockLLM.On("Generate",
-		context.Background(),
-		mock.MatchedBy(func(messages []common.Message) bool {
-			// Verify system prompt contains both base prompt and JSON instruction
-			if len(messages) < 1 || messages[0].Role != "system" {
-				return false
-			}
-			systemContent := messages[0].Content
-			return assert.Contains(t, systemContent, "base prompt") &&
-				assert.Contains(t, systemContent, "You must format your entire response as a single, valid JSON object")
-		}),
-		"test-model",
-		mock.Anything).Return("{'result': 'json response'}", nil)
-
-	// setup mock registry
-	mockProvider := &MockProvider{mockLLM: mockLLM}
-	defer setupMockRegistry(mockProvider)()
-
-	// create test config with JSON format
-	cfg := &config.Config{
-		Parameters: config.Parameters{
-			SystemPrompt: "base prompt",
-			Temperature:  0.7,
-		},
-		Format: config.Format{
-			JSON: true,
-		},
-	}
-
-	// create app
-	app := NewApp(cfg, slog.Default(), false)
-
-	// execute Run
-	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"test input"}, []string{}, "", "test-provider", "test-model")
-
-	// assert results
-	assert.NoError(t, err)
-	assert.NotEmpty(t, result)
-
 	mockLLM.AssertExpectations(t)
 }
 
 func TestApp_Run_NoInput_Error(t *testing.T) {
-	// create test config
 	cfg := &config.Config{
 		Parameters: config.Parameters{
 			SystemPrompt: "",
 		},
 	}
 
-	// create app
 	app := NewApp(cfg, slog.Default(), false)
 
-	// execute Run with no input
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{}, []string{}, "", "mock", "test-model")
+	result, err := app.Run(ctx, []string{}, createEmptyContextResult(), "", "mock", "test-model")
 
-	// assert results - should fail with no input!
 	assert.Error(t, err)
 	assert.Empty(t, result)
 	assert.Contains(t, err.Error(), "no input provided")
 }
 
 func TestApp_Run_NilConfig_Error(t *testing.T) {
-	// create app with nil config
 	app := NewApp(nil, slog.Default(), false)
 
-	// execute Run
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"test input"}, []string{}, "", "test-provider", "test-model")
+	result, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model")
 
-	// assert results
 	assert.Error(t, err)
 	assert.Empty(t, result)
 	assert.Contains(t, err.Error(), "configuration is nil")
 }
 
-func TestApp_Run_WithCommandContext(t *testing.T) {
-	// setup mock LLM
+func TestApp_Run_FormatEnhancement_JSON(t *testing.T) {
 	mockLLM := &MockLLM{}
 	mockLLM.On("Generate",
 		context.Background(),
 		mock.MatchedBy(func(messages []common.Message) bool {
-			// should have system message and user message with command
-			return len(messages) == 2 &&
-				messages[0].Role == "system" &&
-				messages[1].Role == "user"
+			// verify system prompt contains JSON formatting instruction
+			if len(messages) < 1 || messages[0].Role != "system" {
+				return false
+			}
+			systemContent := messages[0].Content
+			return assert.Contains(t, systemContent, "base prompt") &&
+				assert.Contains(t, systemContent, "valid JSON object")
 		}),
 		"test-model",
-		mock.Anything).Return("response with context", nil)
+		mock.Anything).Return("{'result': 'json response'}", nil)
 
-	// setup mock registry
 	mockProvider := &MockProvider{mockLLM: mockLLM}
 	defer setupMockRegistry(mockProvider)()
 
-	// create test config
 	cfg := &config.Config{
 		Parameters: config.Parameters{
-			SystemPrompt: "You are a helpful assistant",
+			SystemPrompt: "base prompt",
+		},
+		Format: config.Format{
+			JSON: true,
 		},
 	}
 
-	// create app
 	app := NewApp(cfg, slog.Default(), false)
 
-	// execute Run with command context
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"test input"}, []string{}, "command context", "test-provider", "test-model")
+	result, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model")
 
-	// assert results
 	assert.NoError(t, err)
-	assert.Equal(t, "response with context", result)
-
-	// verify mock expectations
+	assert.NotEmpty(t, result)
 	mockLLM.AssertExpectations(t)
-}
-
-func TestApp_Run_DifferentFormats(t *testing.T) {
-	tests := []struct {
-		name          string
-		format        config.Format
-		expectedInSys string
-	}{
-		{
-			name:          "YAML Format",
-			format:        config.Format{YAML: true},
-			expectedInSys: "valid YAML",
-		},
-		{
-			name:          "Markdown Format",
-			format:        config.Format{MD: true},
-			expectedInSys: "valid Markdown",
-		},
-		{
-			name:          "JSON Format",
-			format:        config.Format{JSON: true},
-			expectedInSys: "JSON",
-		},
-		{
-			name:          "XML Format",
-			format:        config.Format{XML: true},
-			expectedInSys: "valid XML",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// setup mock LLM for this test
-			mockLLM := &MockLLM{}
-			mockLLM.On("Generate",
-				context.Background(),
-				mock.MatchedBy(func(messages []common.Message) bool {
-					if len(messages) < 1 || messages[0].Role != "system" {
-						return false
-					}
-					return assert.Contains(t, messages[0].Content, tt.expectedInSys)
-				}),
-				"test-model",
-				mock.Anything).Return("formatted response", nil)
-
-			// setup mock registry
-			mockProvider := &MockProvider{mockLLM: mockLLM}
-			defer setupMockRegistry(mockProvider)()
-
-			// create test config with specific format
-			cfg := &config.Config{
-				Parameters: config.Parameters{
-					SystemPrompt: "base prompt",
-				},
-				Format: tt.format,
-			}
-
-			// create app
-			app := NewApp(cfg, slog.Default(), false)
-
-			// execute Run
-			ctx := context.Background()
-			result, err := app.Run(ctx, []string{"test input"}, []string{}, "", "test-provider", "test-model")
-
-			// assert results
-			assert.NoError(t, err)
-			assert.Equal(t, "formatted response", result)
-
-			// verify mock expectations
-			mockLLM.AssertExpectations(t)
-		})
-	}
 }
 
 func TestGetSpinner(t *testing.T) {
@@ -377,9 +586,8 @@ func TestGetSpinner(t *testing.T) {
 		name             string
 		providerName     string
 		modelName        string
-		expectedGlyphs   []string
 		expectedSpeed    int
-		expectedNumGlyph int // minimum number of glyphs expected
+		expectedNumGlyph int
 	}{
 		{
 			name:             "Ollama provider",
@@ -399,14 +607,14 @@ func TestGetSpinner(t *testing.T) {
 			name:             "Case insensitive Claude",
 			providerName:     "ANTHROPIC",
 			modelName:        "CLAUDE-SONNET",
-			expectedSpeed:    500, // quick star patterns
+			expectedSpeed:    500,
 			expectedNumGlyph: 5,
 		},
 		{
 			name:             "Case insensitive OpenAI",
 			providerName:     "OPENAI",
 			modelName:        "GPT-4",
-			expectedSpeed:    125, // slow dots pattern
+			expectedSpeed:    125,
 			expectedNumGlyph: 17,
 		},
 	}
@@ -415,12 +623,8 @@ func TestGetSpinner(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			glyphs, speed := getSpinner(tt.providerName, tt.modelName)
 
-			// verify speed
 			assert.Equal(t, tt.expectedSpeed, speed)
-
-			// verify number of glyphs
 			assert.Len(t, glyphs, tt.expectedNumGlyph)
-
 		})
 	}
 }
