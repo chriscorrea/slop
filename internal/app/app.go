@@ -250,10 +250,10 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 			case <-ctx.Done(): // handle context cancellation
 				return
 			case <-time.After(time.Duration(spinSpeed) * time.Millisecond):
-				baseMessage := fmt.Sprintf("%s %s", spinGlyphs[i], modelName) //always display model name and glyph
+				baseMessage := fmt.Sprintf("%s %s", spinGlyphs[i], modelName) // always display model name and glyph
 				switch projectContextCount {
 				case 0:
-					baseMessage += " is generating..." //default
+					baseMessage += " is generating..." // default
 				case 1:
 					if len(contextFiles) > 0 {
 						fileName := filepath.Base(contextFiles[0].Path)

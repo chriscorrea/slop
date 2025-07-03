@@ -164,10 +164,8 @@ func TestProcessContext_ErrorCases(t *testing.T) {
 				if !strings.Contains(err.Error(), tt.errorText) {
 					t.Errorf("Expected error containing %q, got: %v", tt.errorText, err)
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("Unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
 			}
 		})
 	}
