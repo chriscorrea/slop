@@ -12,7 +12,7 @@ By integrating AI directly into your shell as a pipeline-native tool, you can bu
 - **Named commands**: Configure command shortcuts with your own custom system prompts
 - **Model selection**: Quickly switch between local or remote and fast or deep (reasoning) models
 - **Output formatting**: Specify JSON, Markdown, YAML, or XML for structured responses 
-- **Persistent project context**: Configure a directory with context files that are automatically embeded in every command
+- **Persistent project context**: Configure a directory with context files that are automatically embedded in every command
 - **Configuration management**: Define all settings in a TOML config file 
 
 ## Installation
