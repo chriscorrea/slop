@@ -16,8 +16,8 @@ import (
 	"net/http"
 	"strings"
 
-	"slop/internal/config"
-	"slop/internal/llm/common"
+	"github.com/chriscorrea/slop/internal/config"
+	"github.com/chriscorrea/slop/internal/llm/common"
 )
 
 // Provider implements the unified registry.Provider interface for Cohere AI

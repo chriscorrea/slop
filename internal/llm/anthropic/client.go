@@ -1,6 +1,6 @@
 package anthropic
 
-import "slop/internal/llm/common"
+import "github.com/chriscorrea/slop/internal/llm/common"
 
 // MessagesRequest represents the request payload for Anthropic's Messages API
 type MessagesRequest struct {

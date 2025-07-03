@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	slopContext "slop/internal/context"
+	slopContext "github.com/chriscorrea/slop/internal/context"
 )
 
 // StructuredInput represents input components separated for synthetic message history

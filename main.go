@@ -1,6 +1,6 @@
 package main
 
-import "slop/internal/cmd"
+import "github.com/chriscorrea/slop/internal/cmd"
 
 func main() {
 	cmd.Execute()

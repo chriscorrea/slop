@@ -1,6 +1,6 @@
 package cohere
 
-import "slop/internal/llm/common"
+import "github.com/chriscorrea/slop/internal/llm/common"
 
 // GenerateOptions contains Cohere-specific generation parameters
 type GenerateOptions struct {

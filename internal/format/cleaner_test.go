@@ -3,7 +3,7 @@ package format
 import (
 	"testing"
 
-	"slop/internal/config"
+	"github.com/chriscorrea/slop/internal/config"
 )
 
 func TestCleanJSON(t *testing.T) {

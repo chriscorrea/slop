@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"slop/internal/config"
+	"github.com/chriscorrea/slop/internal/config"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

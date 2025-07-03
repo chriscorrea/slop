@@ -6,7 +6,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"slop/internal/config"
+	"github.com/chriscorrea/slop/internal/config"
 
 	"github.com/fatih/color"
 )

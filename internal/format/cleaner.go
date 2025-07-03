@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"slop/internal/config"
+	"github.com/chriscorrea/slop/internal/config"
 )
 
 // CleanResponse removes text outside format boundaries

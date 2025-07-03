@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"log/slog"
 
-	"slop/internal/config"
-	"slop/internal/llm/anthropic"
-	"slop/internal/llm/cohere"
-	"slop/internal/llm/common"
-	"slop/internal/llm/groq"
-	"slop/internal/llm/mistral"
-	"slop/internal/llm/mock"
-	"slop/internal/llm/ollama"
-	"slop/internal/llm/openai"
+	"github.com/chriscorrea/slop/internal/config"
+	"github.com/chriscorrea/slop/internal/llm/anthropic"
+	"github.com/chriscorrea/slop/internal/llm/cohere"
+	"github.com/chriscorrea/slop/internal/llm/common"
+	"github.com/chriscorrea/slop/internal/llm/groq"
+	"github.com/chriscorrea/slop/internal/llm/mistral"
+	"github.com/chriscorrea/slop/internal/llm/mock"
+	"github.com/chriscorrea/slop/internal/llm/ollama"
+	"github.com/chriscorrea/slop/internal/llm/openai"
 )
 
 // AllProviders contains registered LLM providers
