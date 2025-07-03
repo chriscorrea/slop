@@ -5,91 +5,54 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	slopContext "slop/internal/context"
 )
 
-// ReadInput consolidates text from stdin, context files, and CLI arguments
-// the order is: stdin, --context files, then CLI args
-func ReadInput(stdin *os.File, cliArgs []string, contextFiles []string) (string, error) {
-	return ReadInputWithCommandContext(stdin, cliArgs, contextFiles, "")
+// StructuredInput represents input components separated for synthetic message history
+type StructuredInput struct {
+	CommandContext string
+	StdinContent   string
+	ContextFiles   []slopContext.ContextFile
+	CLIArgs        string
 }
 
-// ReadInputWithCommandContext consolidates text from command context
-// the order is commnad, stdin, context files, then CLI args
-func ReadInputWithCommandContext(stdin *os.File, cliArgs []string, contextFiles []string, commandContext string) (string, error) {
-	var builder strings.Builder // https://pkg.go.dev/strings#Builder
-	var hasContent bool
+// ReadInput returns structured input components for synthetic message history
+func ReadInput(stdin *os.File, cliArgs []string, contextFiles []slopContext.ContextFile, commandContext string) (*StructuredInput, error) {
+	var stdinContent string
+	var cliArgsString string
 
-	// 1: command context comes first (if provided)
-	if commandContext != "" {
-		trimmed := strings.TrimSpace(commandContext)
-		if trimmed != "" {
-			builder.WriteString(trimmed)
-			hasContent = true
-		}
-	}
-
-	// 2: read from stdin if available
+	// read from stdin if available
 	if stdin != nil {
 		// check if stdin has data available
 		stat, err := stdin.Stat()
 		if err != nil {
-			return "", fmt.Errorf("failed to stat stdin: %w", err)
+			return nil, fmt.Errorf("failed to stat stdin: %w", err)
 		}
 
 		// check if stdin is a pipe or has data
 		if (stat.Mode() & os.ModeCharDevice) == 0 {
-			stdinContent, err := io.ReadAll(stdin)
+			stdinData, err := io.ReadAll(stdin)
 			if err != nil {
-				return "", fmt.Errorf("failed to read from stdin: %w", err)
+				return nil, fmt.Errorf("failed to read from stdin: %w", err)
 			}
 
-			if len(stdinContent) > 0 {
+			if len(stdinData) > 0 {
 				// trim trailing whitespace
-				content := strings.TrimRight(string(stdinContent), "\r\n\t ")
-				if content != "" {
-					if hasContent {
-						builder.WriteString("\n\n")
-					}
-					builder.WriteString(content)
-					hasContent = true
-				}
+				stdinContent = strings.TrimRight(string(stdinData), "\r\n\t ")
 			}
 		}
 	}
 
-	// 3: read content from context files
-	for _, filePath := range contextFiles {
-		if filePath == "" {
-			continue
-		}
-
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			return "", fmt.Errorf("failed to read context file %q: %w", filePath, err)
-		}
-
-		// trim trailing whitespace
-		fileContent := strings.TrimRight(string(content), "\r\n\t ")
-		if fileContent != "" {
-			if hasContent {
-				builder.WriteString("\n\n")
-			}
-			builder.WriteString(fileContent)
-			hasContent = true
-		}
-	}
-
-	// join CLI arguments with spaces
+	// process CLI arguments
 	if len(cliArgs) > 0 {
-		cliContent := strings.Join(cliArgs, " ")
-		if cliContent != "" {
-			if hasContent {
-				builder.WriteString("\n\n")
-			}
-			builder.WriteString(cliContent)
-			// hasContent = true
-		}
+		cliArgsString = strings.Join(cliArgs, " ")
 	}
 
-	return builder.String(), nil
+	return &StructuredInput{
+		CommandContext: commandContext,
+		StdinContent:   stdinContent,
+		ContextFiles:   contextFiles,
+		CLIArgs:        cliArgsString,
+	}, nil
 }

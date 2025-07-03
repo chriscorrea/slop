@@ -9,6 +9,7 @@ import (
 
 	"slop/internal/app"
 	"slop/internal/config"
+	slopContext "slop/internal/context"
 	"slop/internal/logger"
 
 	"github.com/spf13/cobra"
@@ -139,24 +140,25 @@ var rootCmd = &cobra.Command{
 
 		// binding map
 		flagBindings := map[string]string{
-			"system":      "parameters.system_prompt",
-			"context":     "context",
-			"local":       "local",
-			"fast":        "fast",
-			"deep":        "deep",
-			"temperature": "parameters.temperature",
-			"json":        "format.json",
-			"jsonl":       "format.jsonl",
-			"yaml":        "format.yaml",
-			"md":          "format.md",
-			"xml":         "format.xml",
-			"verbose":     "verbose",
-			"debug":       "debug",
-			"seed":        "parameters.seed",
-			"max-tokens":  "parameters.max_tokens",
-			"max-retries": "parameters.max_retries",
-			"timeout":     "parameters.timeout",
-			"test":        "test",
+			"system":         "parameters.system_prompt",
+			"context":        "context",
+			"ignore-context": "no_context",
+			"local":          "local",
+			"fast":           "fast",
+			"deep":           "deep",
+			"temperature":    "parameters.temperature",
+			"json":           "format.json",
+			"jsonl":          "format.jsonl",
+			"yaml":           "format.yaml",
+			"md":             "format.md",
+			"xml":            "format.xml",
+			"verbose":        "verbose",
+			"debug":          "debug",
+			"seed":           "parameters.seed",
+			"max-tokens":     "parameters.max_tokens",
+			"max-retries":    "parameters.max_retries",
+			"timeout":        "parameters.timeout",
+			"test":           "test",
 		}
 
 		// bind each flag to corresponding Viper key
@@ -208,7 +210,8 @@ func init() {
 	// define persistent flags
 	rootCmd.PersistentFlags().String("config", "", "Path to the config file")
 	rootCmd.PersistentFlags().String("system", "", "The system prompt")
-	rootCmd.PersistentFlags().StringSlice("context", []string{}, "Paths to context files")
+	rootCmd.PersistentFlags().StringSlice("context", []string{}, "Path to context file(s)")
+	rootCmd.PersistentFlags().BoolP("ignore-context", "i", false, "Ignore project context for this command")
 	rootCmd.PersistentFlags().BoolP("local", "l", false, "Use local LLM")
 	rootCmd.PersistentFlags().BoolP("remote", "r", false, "Use remote LLM")
 	rootCmd.PersistentFlags().BoolP("fast", "f", false, "Use fast/lightweight model")
@@ -250,14 +253,38 @@ func init() {
 		}
 	}
 
+	// custom usage template will hide lengthly global flags list for subcommands
+	rootCmd.SetUsageTemplate(`Usage:{{if .Runnable}}
+  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
+
+Aliases:
+  {{.NameAndAliases}}{{end}}{{if .HasExample}}
+
+Examples:
+{{.Example}}{{end}}{{if .HasAvailableSubCommands}}
+
+Available Commands:{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
+
+Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
+
+Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}
+`)
+
 	// add reserved commands as proper Cobra subcommands
 	rootCmd.AddCommand(createListCommand())
 	rootCmd.AddCommand(createVersionCommand())
 	rootCmd.AddCommand(createNamedHelpCommand())
+	rootCmd.AddCommand(createContextCommand())
 }
 
 // executeApp handles the common execution logic for both direct prompts and named commands
-func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextFiles []string, commandContext string, showCommandInfo bool, commandName string) error {
+func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextResult *slopContext.ContextResult, commandContext string, showCommandInfo bool, commandName string) error {
 	// select model using the selector
 	providerName, modelName, err := selectModelForCommand(cmd, cfg, commandName, args)
 	if err != nil {
@@ -284,7 +311,7 @@ func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextFi
 	output, err := appInstance.Run(
 		cmd.Context(),
 		args, // user prompt arguments
-		contextFiles,
+		contextResult,
 		commandContext, // command context (empty for a direct prompt)
 		providerName,
 		modelName,
@@ -306,30 +333,21 @@ func handleDirectPrompt(cmd *cobra.Command, args []string) error {
 	// use base config without any command overrides
 	cfg := state.manager.Config()
 
-	// get context files from command flags
-	contextFiles, err := getContextFiles(cmd, nil)
+	// check for --ignore-context flag
+	skipProjectContext, err := cmd.Flags().GetBool("ignore-context")
 	if err != nil {
-		return fmt.Errorf("failed to get context files: %w", err)
+		return fmt.Errorf("failed to get ignore-context flag: %w", err)
+	}
+
+	// process context using the context manager
+	contextManager := NewContextManager()
+	contextResult, err := contextManager.ProcessContextWithFlags(cmd, nil, skipProjectContext)
+	if err != nil {
+		return fmt.Errorf("failed to process context: %w", err)
 	}
 
 	// exec app with no command context, no command info display
-	return executeApp(cmd, args, cfg, contextFiles, "", false, "")
-}
-
-// getContextFiles combines context files from flags and command config
-func getContextFiles(cmd *cobra.Command, additionalFiles []string) ([]string, error) {
-	// Get context files from flags
-	flagFiles, err := cmd.Flags().GetStringSlice("context")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get context flag: %w", err)
-	}
-
-	// combine flag files and other files
-	var allFiles []string
-	allFiles = append(allFiles, flagFiles...)
-	allFiles = append(allFiles, additionalFiles...)
-
-	return allFiles, nil
+	return executeApp(cmd, args, cfg, contextResult, "", false, "")
 }
 
 // selectModelForCommand uses the existing model selector logic
@@ -365,14 +383,21 @@ func handleNamedCommand(cmd *cobra.Command, cmdName string, cmdConfig config.Com
 	baseConfig := state.manager.Config()
 	workingConfig := baseConfig.WithCommandOverrides(cmdConfig)
 
-	// ge context files from command flags and command config
-	contextFiles, err := getContextFiles(cmd, cmdConfig.ContextFiles)
+	// check for --ignore-context flag
+	skipProjectContext, err := cmd.Flags().GetBool("ignore-context")
 	if err != nil {
-		return fmt.Errorf("failed to get context files: %w", err)
+		return fmt.Errorf("failed to get ignore-context flag: %w", err)
+	}
+
+	// process context using the context manager with command context files
+	contextManager := NewContextManager()
+	contextResult, err := contextManager.ProcessContextWithFlags(cmd, cmdConfig.ContextFiles, skipProjectContext)
+	if err != nil {
+		return fmt.Errorf("failed to process context: %w", err)
 	}
 
 	// exec app with command context and command info display
-	return executeApp(cmd, args, workingConfig, contextFiles, cmdConfig.Context, true, cmdName)
+	return executeApp(cmd, args, workingConfig, contextResult, cmdConfig.Context, true, cmdName)
 }
 
 // createListCommand creates the list subcommand
@@ -394,10 +419,12 @@ func createListCommand() *cobra.Command {
 			// show built-in commands
 			fmt.Fprintln(cmd.OutOrStdout(), "Built-in commands:")
 			fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s\n", "help", "Show help for commands")
-			fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s\n", "list", "List all available commands")
-			fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s\n", "version", "Show version information")
+			fmt.Fprintln(cmd.OutOrStdout())
+
 			fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s\n", "config", "Show configuration information")
 			fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s\n", "config set", "Set a specific configuration value")
+			fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s\n", "context", "Manage persistent context for the current directory")
+			fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s\n", "list", "List all available commands")
 
 			fmt.Fprintln(cmd.OutOrStdout())
 			fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %s\n", "init", "Configure a new slop installation")

@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"slop/internal/config"
+	slopContext "slop/internal/context"
 	"slop/internal/format"
 	slopIO "slop/internal/io"
 	"slop/internal/llm/common"
@@ -134,21 +136,23 @@ func getSpinner(providerName, modelName string) (glyphs []string, speed int) {
 }
 
 // Run executes the main application logic
-func (a *App) Run(ctx context.Context, cliArgs []string, contextFiles []string, commandContext, providerName, modelName string) (string, error) {
+func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopContext.ContextResult, commandContext, providerName, modelName string) (string, error) {
 	if a.cfg == nil {
 		return "", fmt.Errorf("configuration is nil")
 	}
 
-	// consolidate input from stdin, context files, CLI args, and (optionally) command context
-	var prompt string
-	var err error
-	if commandContext == "" {
-		prompt, err = slopIO.ReadInput(os.Stdin, cliArgs, contextFiles)
-	} else {
-		prompt, err = slopIO.ReadInputWithCommandContext(os.Stdin, cliArgs, contextFiles, commandContext)
+	// read input using structured processing for synthetic message history
+	var contextFiles []slopContext.ContextFile
+	if contextResult != nil {
+		contextFiles = contextResult.ContextFileContents
 	}
+
+	// calculate project context count for spinner display
+	projectContextCount := len(contextFiles)
+
+	structuredInput, err := slopIO.ReadInput(os.Stdin, cliArgs, contextFiles, commandContext)
 	if err != nil {
-		return "", fmt.Errorf("failed to read input: %w", err)
+		return "", fmt.Errorf("failed to read structured input: %w", err)
 	}
 
 	// create a provider using the registry
@@ -157,11 +161,10 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextFiles []string, 
 		return "", fmt.Errorf("failed to create provider: %w", err)
 	}
 
-	// create messages from the consolidated prompt and system prompt
+	// create messages using either synthetic message history or traditional approach
 	var messages []common.Message
 
 	// apply format instructions regardless of native structured output support
-	// even with native structured output, we still need format instructions
 	enhancedSystemPrompt := enhanceSystemPromptForFormat(a.cfg.Parameters.SystemPrompt, a.cfg.Format)
 
 	if enhancedSystemPrompt != "" {
@@ -171,12 +174,8 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextFiles []string, 
 		})
 	}
 
-	if prompt != "" {
-		messages = append(messages, common.Message{
-			Role:    "user",
-			Content: prompt,
-		})
-	}
+	// build synthetic message history from structured input
+	messages = append(messages, buildSyntheticMessageHistory(structuredInput)...)
 
 	// if no messages created, return an error
 	if len(messages) == 0 {
@@ -191,19 +190,35 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextFiles []string, 
 
 	// log request parameters when debug is enabled
 	if a.logger != nil {
+		// calculate total message content length for logging
+		var totalContentLength int
+		var userMessageCount int
+		for _, msg := range messages {
+			totalContentLength += len(msg.Content)
+			if msg.Role == "user" {
+				userMessageCount++
+			}
+		}
+
 		a.logger.Info("Preparing LLM request",
 			"provider", providerName,
 			"model", modelName,
 			"temperature", a.cfg.Parameters.Temperature,
 			"max_tokens", a.cfg.Parameters.MaxTokens,
 			"system_prompt_length", len(enhancedSystemPrompt),
-			"user_prompt_length", len(prompt))
+			"total_content_length", totalContentLength,
+			"user_message_count", userMessageCount,
+			"synthetic_history", true)
 
 		if enhancedSystemPrompt != "" {
 			a.logger.Debug("System prompt", "content", enhancedSystemPrompt)
 		}
-		if prompt != "" {
-			a.logger.Debug("User prompt", "content", prompt)
+
+		// log all user messages when debug is enabled
+		for i, msg := range messages {
+			if msg.Role == "user" {
+				a.logger.Debug("User message", "index", i, "content_length", len(msg.Content), "content", msg.Content)
+			}
 		}
 	}
 
@@ -235,8 +250,22 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextFiles []string, 
 			case <-ctx.Done(): // handle context cancellation
 				return
 			case <-time.After(time.Duration(spinSpeed) * time.Millisecond):
-				message := fmt.Sprintf("%s %s is generating...", spinGlyphs[i], modelName)
-				fmt.Fprintf(os.Stderr, "\r%s", cyan(message))
+				baseMessage := fmt.Sprintf("%s %s", spinGlyphs[i], modelName) //always display model name and glyph
+				switch projectContextCount {
+				case 0:
+					baseMessage += " is generating..." //default
+				case 1:
+					if len(contextFiles) > 0 {
+						fileName := filepath.Base(contextFiles[0].Path)
+						baseMessage += fmt.Sprintf(" is generating (using %s)", fileName)
+					} else {
+						baseMessage += " is generating using 1 project context file..."
+					}
+				default:
+					baseMessage += fmt.Sprintf(" is generating (using %d project context files)", projectContextCount)
+				}
+				// print the message
+				fmt.Fprintf(os.Stderr, "\r%s", cyan(baseMessage))
 				i = (i + 1) % len(spinGlyphs)
 			}
 		}
@@ -258,4 +287,47 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextFiles []string, 
 	cleanedResponse := cleanFormattedResponse(response, a.cfg.Format)
 
 	return cleanedResponse, nil
+}
+
+// buildSyntheticMessageHistory creates a sequence of user messages from structured input
+func buildSyntheticMessageHistory(input *slopIO.StructuredInput) []common.Message {
+	var messages []common.Message
+
+	// 1: each context file becomes a separate user message
+	for _, contextFile := range input.ContextFiles {
+		if contextFile.Content != "" {
+			// include file path information for better context?
+			content := fmt.Sprintf("File: %s\n\n%s", contextFile.Path, contextFile.Content)
+			messages = append(messages, common.Message{
+				Role:    "user",
+				Content: content,
+			})
+		}
+	}
+
+	// 2: stdin content becomes a user message (if present)
+	if input.StdinContent != "" {
+		messages = append(messages, common.Message{
+			Role:    "user",
+			Content: input.StdinContent,
+		})
+	}
+
+	// 3: command context becomes a user message (if present)
+	if input.CommandContext != "" {
+		messages = append(messages, common.Message{
+			Role:    "user",
+			Content: input.CommandContext,
+		})
+	}
+
+	// 4: CLI arg (user prompt) becomes the final/most recent message
+	if input.CLIArgs != "" {
+		messages = append(messages, common.Message{
+			Role:    "user",
+			Content: input.CLIArgs,
+		})
+	}
+
+	return messages
 }
