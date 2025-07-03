@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"slop/internal/config"
-	slopContext "slop/internal/context"
-	"slop/internal/format"
-	slopIO "slop/internal/io"
-	"slop/internal/llm/common"
-	"slop/internal/registry"
-	"slop/internal/verbose"
+	"github.com/chriscorrea/slop/internal/config"
+	slopContext "github.com/chriscorrea/slop/internal/context"
+	"github.com/chriscorrea/slop/internal/format"
+	slopIO "github.com/chriscorrea/slop/internal/io"
+	"github.com/chriscorrea/slop/internal/llm/common"
+	"github.com/chriscorrea/slop/internal/registry"
+	"github.com/chriscorrea/slop/internal/verbose"
 
 	"github.com/fatih/color"
 )

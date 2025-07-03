@@ -1,6 +1,6 @@
 package groq
 
-import "slop/internal/llm/common"
+import "github.com/chriscorrea/slop/internal/llm/common"
 
 // ChatRequest represents the request payload for Groq's chat API
 // Groq uses OpenAI-compatible format

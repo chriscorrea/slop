@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"slop/internal/manifest"
+	"github.com/chriscorrea/slop/internal/manifest"
 
 	"github.com/spf13/cobra"
 )

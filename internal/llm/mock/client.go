@@ -3,7 +3,7 @@ package mock
 import (
 	"context"
 
-	"slop/internal/llm/common"
+	"github.com/chriscorrea/slop/internal/llm/common"
 )
 
 // Client implements the common.LLM interface for mock testing

@@ -1,6 +1,6 @@
 package mistral
 
-import "slop/internal/llm/common"
+import "github.com/chriscorrea/slop/internal/llm/common"
 
 // ChatRequest represents the request payload for Mistral's chat API
 // This is used by the MistralAdapter to build provider-specific requests

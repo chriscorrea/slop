@@ -4,7 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"slop/internal/config"
+
+	"github.com/chriscorrea/slop/internal/config"
 )
 
 // LLM is the client interface; all provider clients must implement this

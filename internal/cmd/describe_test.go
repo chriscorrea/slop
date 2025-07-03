@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"slop/internal/config"
+	"github.com/chriscorrea/slop/internal/config"
 
 	"github.com/spf13/cobra"
 )

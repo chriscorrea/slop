@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	slopContext "slop/internal/context"
-	"slop/internal/manifest"
+	slopContext "github.com/chriscorrea/slop/internal/context"
+	"github.com/chriscorrea/slop/internal/manifest"
 
 	"github.com/spf13/cobra"
 )

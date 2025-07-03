@@ -1,6 +1,6 @@
 package cohere
 
-import "slop/internal/llm/common"
+import "github.com/chriscorrea/slop/internal/llm/common"
 
 // ChatRequest represents the request payload for Cohere's chat API
 type ChatRequest struct {

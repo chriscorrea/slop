@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"slop/internal/app"
-	"slop/internal/config"
-	slopContext "slop/internal/context"
-	"slop/internal/logger"
+	"github.com/chriscorrea/slop/internal/app"
+	"github.com/chriscorrea/slop/internal/config"
+	slopContext "github.com/chriscorrea/slop/internal/context"
+	"github.com/chriscorrea/slop/internal/logger"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"

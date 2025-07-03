@@ -2,8 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"slop/internal/config"
 	"strings"
+
+	"github.com/chriscorrea/slop/internal/config"
 
 	"github.com/spf13/cobra"
 )

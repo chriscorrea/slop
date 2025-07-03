@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	slopContext "slop/internal/context"
+	slopContext "github.com/chriscorrea/slop/internal/context"
 
 	"github.com/spf13/cobra"
 )

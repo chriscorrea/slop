@@ -1,4 +1,4 @@
-module slop
+module github.com/chriscorrea/slop
 
 go 1.24
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	slopContext "slop/internal/context"
+	slopContext "github.com/chriscorrea/slop/internal/context"
 )
 
 func TestReadInput_StructuredProcessing(t *testing.T) {

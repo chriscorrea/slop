@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"slop/internal/data"
+	"github.com/chriscorrea/slop/internal/data"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/fatih/color"

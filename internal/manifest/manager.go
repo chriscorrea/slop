@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	slopContext "slop/internal/context"
+	slopContext "github.com/chriscorrea/slop/internal/context"
 )
 
 // ManifestManager handles .slop/context manifest for persistent project context

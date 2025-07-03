@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"slop/internal/config"
-	"slop/internal/data"
+	"github.com/chriscorrea/slop/internal/config"
+	"github.com/chriscorrea/slop/internal/data"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/fatih/color"

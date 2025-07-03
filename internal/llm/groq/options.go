@@ -1,6 +1,6 @@
 package groq
 
-import "slop/internal/llm/common"
+import "github.com/chriscorrea/slop/internal/llm/common"
 
 // GenerateOptions contains Groq-specific generation parameters
 type GenerateOptions struct {

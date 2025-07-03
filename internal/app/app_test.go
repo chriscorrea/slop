@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"testing"
 
-	"slop/internal/config"
-	slopContext "slop/internal/context"
-	slopIO "slop/internal/io"
-	"slop/internal/llm/common"
-	"slop/internal/registry"
+	"github.com/chriscorrea/slop/internal/config"
+	slopContext "github.com/chriscorrea/slop/internal/context"
+	slopIO "github.com/chriscorrea/slop/internal/io"
+	"github.com/chriscorrea/slop/internal/llm/common"
+	"github.com/chriscorrea/slop/internal/registry"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
