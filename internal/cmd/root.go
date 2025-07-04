@@ -320,7 +320,7 @@ func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextRe
 		return fmt.Errorf("failed to run app: %w", err)
 	}
 
-	fmt.Fprint(cmd.OutOrStdout(), output)
+	fmt.Fprintln(cmd.OutOrStdout(), output)
 	return nil
 }
 
