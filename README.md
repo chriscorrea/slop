@@ -1,110 +1,147 @@
 # Slop
 
-The **stochastic language operator** 
-brings large language models to your command line. It’s built on the idea that language models work best as composable _language operators_.
+[![Go Version](https://img.shields.io/github/go-mod/go-version/chriscorrea/slop)](go.mod)
+[![CI](https://github.com/chriscorrea/slop/actions/workflows/push.yml/badge.svg?branch=main)](https://github.com/chriscorrea/slop/actions/workflows/push.yml)
+[![Latest Release](https://img.shields.io/github/v/release/chriscorrea/slop)](https://github.com/chriscorrea/slop/releases)
 
-By integrating AI directly into your shell as a pipeline-native tool, you can build sophisticated workflows for modular, observable, and effective solutions.
+**Slop** (_stochastic language operator_) brings large language models to your command line as simple, composable tools. 
 
-## Features
+You can treat AI models like powerful text-processing functions and chain them together, building observable and repeatable workflows without heavy tooling.
 
-- **Multiple LLM providers**: Use local models ([Ollama](https://ollama.com/)) or connect to various remote providers
-- **Flexible input**: Shape LLM instructions using command-line arguments, piped stdin, or text files
-- **Named commands**: Configure command shortcuts with your own custom system prompts
-- **Model selection**: Quickly switch between local or remote and fast or deep (reasoning) models
-- **Output formatting**: Specify JSON, Markdown, YAML, or XML for structured responses 
-- **Persistent project context**: Configure a directory with context files that are automatically embedded in every command
-- **Configuration management**: Define all settings in a TOML config file 
+<!--
+## Demo
 
-## Installation
+[![asciicast](https://asciinema.org/a/QszuTQMF339iZadU3UyQlz8ss.svg?autoplay=1&loop=1)](https://asciinema.org/a/QszuTQMF339iZadU3UyQlz8ss) -->
 
+## ✨ Highlights
+
+- **Run Anywhere:** Get started in seconds on macOS, Linux, or Windows with a single binary.
+- **Flexible AI Models:** Seamlessly switch between local models for privacy and capable cloud models for scale.
+- **Create AI Workflows:** Chain AI commands together to create multi-step workflows—no complex frameworks required.
+- **Reusable Commands:** Save your most useful instructions as custom commands that you can run again and again.
+- **Project Context:** Automatically include relevant project files in your prompt context.
+- **Structured Output:** Format responses as clean JSON, YAML, or Markdown that works with your other tools.
+
+## 📦 Installation
+
+### Pre-built Binaries (Recommended)
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/chriscorrea/slop/releases).
+
+#### macOs:
+
+```bash
+# Download and install latest release
+curl -L https://github.com/chriscorrea/slop/releases/latest/download/slop-darwin-amd64.tar.gz | tar xz
+sudo mv slop /usr/local/bin/
+```
+
+#### Linux:
+```bash
+# Download and install latest release
+curl -L https://github.com/chriscorrea/slop/releases/latest/download/slop-linux-amd64.tar.gz | tar xz
+sudo mv slop /usr/local/bin/
+```
+
+#### Windows:
+
+1. [Download](https://github.com/chriscorrea/slop/releases/latest) slop-windows-amd64.zip
+2. Extract the archive
+3. Add slop.exe to your PATH
+
+### Homebrew (macOS)
+
+```bash
+brew tap chriscorrea/slop
+brew install slop
+```
+
+### Go Install
+If you have Go installed, you can install directly from source:
 ```bash
 go install github.com/chriscorrea/slop@latest
 ```
 
-Or build from source:
-
-```bash
-git clone https://github.com/chriscorrea/slop.git
-cd slop
-make build
-```
-
 ### Quick Configuration
 
-After installing, run the `init` command to configure your preferences and API keys:
+After installing, run the `init` command to configure your preferred models and API keys:
 
 ```bash
 slop init
 ```
 
-## Basic Usage
+## 🚀 Quick Start
 
-#### Simple prompting
-The most direct way to use slop is to pass your prompt as an argument.
+#### Simple Prompting
+
+The most direct way to use slop is to pass your prompt as an argument:
 
 ```bash
 slop "What is a large language model?"
 ```
 
-#### Add files for context
+#### Add Files for Context
 
-The `--context` flag will prepend file content to your prompt
-
-```bash
-slop --context speech.txt "Translate this document into accessible, plain language."
-```
-
-#### Piped input
-
-You can also pipe the output of any command directly into slop to provide context for your prompt. This is a powerful way to work with data on the fly.
+Use the --context flag to include file content in your prompt:
 
 ```bash
-curl -s https://wttr.in/ | slop "What will I need to wear for tomorrow's groundbreaking ceremony?"
+slop --context RFI-2025-05936.xml "Where is the DOE considering buliding new data centers?"
 ```
 
-By chaining multiple calls together, you can design sophisticated AI workflows directly in your terminal. This approach enables complex simulated reasoning, planning, and problem-solving by breaking a large task into a series of smaller, focused steps.
+#### Piped Input
 
-### Model Selection
-
-#### Quick Inference
-
-Use the `-f` or `--flash` flag to get a fast response from a lightweight model.
+Pipe command output directly into slop for dynamic data processing:
 
 ```bash
-slop --flash "Which character proposed the windmill in Animal Farm?"
+curl -s https://www.drought.gov/national | pandoc -f html -t plain | slop "which states are most vulnerable to drought?"
 ```
 
-#### For Deep Reasoning
-
-Use the `-d` or `--deep` flag for complex tasks that require reasoning models.
+Chain multiple slop commands to orchestrate multi-stage solutions:
 
 ```bash
-slop --deep "Analyze the windmill as a symbol of technological utopianism"
+curl -s https://www.drought.gov/national | pandoc -f html -t plain | slop "Which States are most vulnerable to drought"| slop --context ./slop/RFI-2025-05936.xml "Which proposed data centers are in areas vulnerable to drought?"
 ```
 
-#### For Remote Processing
+This approach lets you decompose complex problems into focused steps, making AI processing modular and observable.
 
-Use the `r` or `--remote` flag to leverage cloud-based models for enhanced capabilities.
+```bash
+# analyze data and create a report
+cat public_comments.csv | \
+  slop "Extract all feedback with negative sentiment" | \
+  slop --md "Group the feedback by theme and summarize the top 3 issues" > report.md
+  ```
+
+## Model Selection
+
+Use the `--fast` or `-f` flag to get a fast response from a lightweight model.
+
+```bash
+slop --fast "Who first proposed the Animal Farm windmill?"
+```
+
+Use the `--deep` or `-d` flag for more complex tasks that require reasoning models.
+
+```bash
+slop --deep "Analyze the Animal Farm windmill as a symbol of technological utopianism""
+```
+
+Use the `--remote` or `-r` flag to leverage cloud-based models.
 
 ```bash
 slop --remote "Summarize the risk levels defined in the EU AI Act of 2024"
 ```
 
-#### For Local Processing
-
-Use the `-l` or `--local` flag to run models privately on your machine via Ollama.
+Use the `--local` or `-l` flag to run models privately on your machine via Ollama.
 
 ```bash
 slop --local "Elaborate on the concept of a 'Ghost in the Machine' with a 2-page report"
 ```
 
+You can combine these flags (for example, `-ld`) to specify the right model for your job. 
+
 #### Supported Model Providers
-Slop supports multiple LLM providers:
 
-**Local Providers:**
-- **[Ollama](https://ollama.com/)** for open-weight models including Llama, Gemma, Deepseek, and many others
-
-**Remote Providers:**
+- **[Ollama](https://ollama.com/)** for local open-weight models including Llama, Gemma, Deepseek, and many others
 
 - **[Anthropic](https://www.anthropic.com/)**
 - **[Cohere](https://cohere.com/)**
@@ -112,98 +149,73 @@ Slop supports multiple LLM providers:
 - **[Mistral AI](https://mistral.ai/)**
 - **[OpenAI](https://openai.com/)**
 
-### Persistent Context
+## 🔖 Named Commands
+Create your own library of commands by saving your most common instructions. This lets you build a personalized set of tools for your daily workflows.
 
-You can set up **persistent context** that automatically includes relevant files in every slop command run from a project directory. This eliminates the need to manually specify context files.
+#### Configuration
+To create a new command, add a [commands.<name>] section to the `/.slop/commands.toml` file located in your home directory. For example:
+
+```toml
+[commands.review]
+description = "Python code reviewer"
+system_prompt = """You are an expert Python programmer. 
+  Analyze the provided code and deliver a review with a focus on security, performance, and maintainability.
+  Your feedback must be actionable and constructive.
+  For each suggestion, include a 'before' and 'after' code snippet."""
+model_type = "deep"
+temperature = 0.3
+```
+
+#### Usage
+Once configured, you can use your named workflow by passing its name to slop. The command will automatically apply your saved configuration.
+
+```bash
+cat *.py | slop review
+```
+
+## 🗄️ Persistent Context
+
+You can automatically add relevant files in every slop command run within a project directory. This eliminates the need to manually specify context files.
 
 ```bash
 # Set up project context by adding files
 slop context add README.md
 
-# Future slop commands in this directory will includes the file(s) as context
-slop "Explain the main functionality of this project"
+# slop commands in this directory will include the context file(s)
+slop "Explain the goals of this project"
 ```
 
-The context is managed through a `.slop/context` manifest file.
+The context is managed through a `.slop/context` manifest file in the project directory.
 
 ```bash
 # View current project context
 slop context list
 
 # Add more files or directories
-slop context add src/utils/ tests/integration/
+slop context add docs/
 
 # Clear all project context
 slop context clear
 
-# Skip project context for a single command
+# Temporarily ignore project context with -i or --ignore-context
 slop --ignore-context "Quick question without project files"
 ```
 
-**Tip**: Project context files are sent as individual messages to the LLM, providing better structure and understanding compared to concatenated text.
+## 🛠️ Output Formatting
 
-## Configuration
+To receive a structured response, add one of the following flags to your command to automatically guide the model and clean the raw model output. 
 
-Slop uses TOML configuration files located at `~/.slop/config.toml` by default.
+- `--json`: Format response as JSON
+- `--jsonl`: Format response as newline-delimited JSONL
+- `--yaml`: Format response as YAML
+- `--md`: Format response as Markdown
+- `--xml`: Format response as XML
 
-### Basic Configuration
+Note that format flags are mutually exclusive.
 
-```toml
-[providers.mistral]
-api_key = "your-api-key"
-base_url = "https://api.mistral.ai/v1"
+## ⚙️ Configuration
 
-[providers.ollama]
-base_url = "http://localhost:11434"
-
-[models.remote.fast]
-provider = "mistral"
-name = "ministral-8b-latest"
-
-[models.remote.deep]
-provider = "mistral"
-name = "magistral-medium-latest"
-
-[models.local.fast]
-provider = "ollama"
-name = "gemma3:latest"
-
-[models.local.deep]
-provider = "ollama"
-name = "deepseek-r1:14b"
-
-[parameters]
-temperature = 0.7
-max_tokens = 2048
-```
-
-### Named Commands
-
-```toml
-[commands.compress]
-description = "Summarize and compress text"
-system_prompt = "You are an expert at condensing information. Summarize the following text concisely while preserving key information."
-model_hint = "flash"
-
-[commands.expand]
-description = "Expand and elaborate on ideas"
-system_prompt = "You are an expert at expanding ideas. Take the following text and elaborate on it with detailed explanations and examples."
-model_hint = "fast"
-temperature = 0.75
-
-[commands.translate]
-description = "Plain language translator"
-system_prompt = "You are an expert editor specializing in plain language. You will translate the user's text into clear, simple English. Break down long sentences, replace jargon with common words, and use the active voice."
-model_hint = "reasoning"
-
-[commands.review]
-description = "Code reviewer"
-system_prompt = "You are an expert Python programmer. Analyze the following code for bugs, improvements, and best practices."
-model_hint = "reasoning"
-temperature = 0.3
-```
-
-### Configuration Management
+#### Command-Line Configuration
 
 ```bash
 # View current configuration
@@ -212,10 +224,29 @@ slop config show
 # Set configuration values
 slop set providers.mistral.api_key "your-key"
 slop set models.deep_remote "magistral-medium-latest"
-
 ```
 
-### Information Commands
+#### Configuration File
+
+Slop uses TOML configuration files located at `/.slop/config.toml` in your home directory by default.
+
+You can add or edit model providers:
+
+```toml
+[providers.anthropic]
+api_key = "your-api-key"
+base_url = "https://api.mistral.ai/v1"
+```
+
+You can configure remote/local and fast/deep model preferences:
+
+```toml
+[models.local.fast]
+provider = "ollama"
+name = "gemma3n:latest"
+```
+
+## ℹ️  Helpful Commands
 
 ```bash
 # List all available commands
@@ -229,8 +260,6 @@ slop help
 slop help [command-name]
 ```
 
-## Flags
-
 ### Global Flags
 
 - `--config`: Path to config file
@@ -241,20 +270,7 @@ slop help [command-name]
 - `--remote`, `-r`: Use remote LLM provider  
 - `--fast`, `-f`: Use fast/light model
 - `--deep`, `d`: Use deep/reasoning model
-- `--test`: Use mock provider for testing
-- `--verbose`,  `-v`: Enable structured logging
-
-### Output Formatting
-
-To receive a clean, structured response, simply add one of the following flags to your command. The tool will ensure properly formatted responses by guiding the model and cleaning the raw model output. 
-
-- `--json`: Format response as JSON
-- `--jsonl`: Format response as newline-delimited JSONL
-- `--yaml`: Format response as YAML
-- `--md`: Format response as Markdown
-- `--xml`: Format response as XML
-
-Note: Format flags are mutually exclusive.
+- `--verbose`,  `-v`: Show request details
 
 ### Parameter Flags
 
@@ -262,3 +278,11 @@ Note: Format flags are mutually exclusive.
 - `--max-tokens`: Maximum response length in tokens
 - `--top-p`: Nucleus sampling threshold (affects variety)
 - `--stop-sequences`: Stop sequences, or strings that terminate generation
+
+## 🤝 Contributing
+
+Contributions and issues are welcome – please see the [issues page](https://github.com/chriscorrea/slop/issues).
+
+## 📝 License
+
+This project is licensed under the [BSD-3 License](LICENSE).
