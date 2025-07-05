@@ -28,7 +28,7 @@ You can treat AI models like powerful text-processing functions and chain them t
 
 Download the latest release for your platform from [GitHub Releases](https://github.com/chriscorrea/slop/releases).
 
-#### macOs:
+#### macOS:
 
 ```bash
 # Download and install latest release
