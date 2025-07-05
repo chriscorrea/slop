@@ -85,7 +85,8 @@ slop "What is a large language model?"
 Use the --context flag to include file content in your prompt:
 
 ```bash
-slop --context RFI-2025-05936.xml "Where is the DOE considering buliding new data centers?"
+slop --context RFI-2025-05936.xml \
+"Where is the government considering buliding new data centers?"
 ```
 
 #### Piped Input
@@ -93,23 +94,46 @@ slop --context RFI-2025-05936.xml "Where is the DOE considering buliding new dat
 Pipe command output directly into slop for dynamic data processing:
 
 ```bash
-curl -s https://www.drought.gov/national | pandoc -f html -t plain | slop "which states are most vulnerable to drought?"
+curl -s https://www.drought.gov/national | \
+  pandoc -f html -t plain | \
+  slop "which states are most vulnerable to drought?"
 ```
 
 Chain multiple slop commands to orchestrate multi-stage solutions:
 
 ```bash
-curl -s https://www.drought.gov/national | pandoc -f html -t plain | slop "Which States are most vulnerable to drought"| slop --context ./slop/RFI-2025-05936.xml "Which proposed data centers are in areas vulnerable to drought?"
+curl -s https://www.drought.gov/national | \
+ pandoc -f html -t plain | \
+ slop "Which States are most vulnerable to drought"| \
+ slop --context RFI-2025-05936.xml \
+ "Which proposed data centers are in areas vulnerable to drought?"
 ```
 
-This approach lets you decompose complex problems into focused steps, making AI processing modular and observable.
+The results (based on [this proposal](https://www.federalregister.gov/documents/2025/04/07/2025-05936/request-for-information-on-artificial-intelligence-infrastructure-on-doe-lands#h-19)):
+```plaintext
+Based on the drought conditions you mentioned and the DOE sites listed in the RFI, several proposed data centers are located in drought-vulnerable areas:
+
+**Western States (High Drought Risk):**
+- Idaho National Laboratory (Idaho)
+- National Renewable Energy Laboratory (Colorado)
+- Los Alamos National Laboratory (New Mexico)
+- Sandia National Laboratories (New Mexico)
+
+**Great Plains (Moderate-High Drought Risk):**
+- Pantex Plant (Texas)
+- Kansas City National Security Campus (Missouri)
+
+These sites would face significant water availability challenges for data center cooling systems, which typically require substantial water resources for operations.
+```
+
+This approach lets you decompose complex problems into focused steps, making AI workflows more modular and observable.
 
 ```bash
 # analyze data and create a report
 cat public_comments.csv | \
   slop "Extract all feedback with negative sentiment" | \
   slop --md "Group the feedback by theme and summarize the top 3 issues" > report.md
-  ```
+```
 
 ## Model Selection
 
