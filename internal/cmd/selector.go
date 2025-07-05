@@ -41,6 +41,9 @@ func (s *DefaultModelSelector) SelectModel(cmd *cobra.Command, cfg *config.Confi
 		useLocal = true
 	} else if remoteFlag, _ := cmd.Flags().GetBool("remote"); remoteFlag {
 		useLocal = false
+	} else if !cmd.Flags().Changed("local") && !cmd.Flags().Changed("remote") {
+		// no flags set, use config default
+		useLocal = cfg.Parameters.DefaultLocation == "local"
 	}
 
 	// determine deep/fast preference
@@ -49,6 +52,9 @@ func (s *DefaultModelSelector) SelectModel(cmd *cobra.Command, cfg *config.Confi
 		useDeep = true
 	} else if fastFlag, _ := cmd.Flags().GetBool("fast"); fastFlag {
 		useDeep = false
+	} else if !cmd.Flags().Changed("deep") && !cmd.Flags().Changed("fast") {
+		// no flags set, use config default
+		useDeep = cfg.Parameters.DefaultModelType == "deep"
 	}
 
 	// select appropriate model config and then validate it
