@@ -1,0 +1,60 @@
+# .goreleaser.yml
+
+project_name: slop
+
+# run before the build.
+before:
+  hooks:
+    - go mod tidy
+
+# config for build
+builds:
+  - id: slop
+    main: .
+    binary: slop
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+manpages:
+  - ./man/*.1
+
+checksum:
+  name_template: "checksums.txt"
+
+# package into Homebrew formulas.
+brews:
+  - name: slop
+    tap:
+      owner: chriscorrea
+      name: homebrew-slop
+    homepage: "https://github.com/chriscorrea/slop"
+    description: "Build LLM workflows on the command line"
+    test: |
+      system "#{bin}/slop version"
+
+archives:
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    # add important files to the archive root (binary auto included)
+    files:
+      - README.md
+      - LICENSE
+      - ./man/*.1
+
+changelog:
+  sort: asc
+  filters:
+    - regexp: '(?i)^(docs|test|style|chore|ci):'
+
+# enables creation of GitHub releases
+release:
+  github:
+    owner: chriscorrea
+    name: slop
