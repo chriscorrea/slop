@@ -5,7 +5,7 @@ on:
   push:
     tags:
       - "v*"
-    # enables manual trigger
+    # manual trigger
     workflow_dispatch:
       inputs:
         tag:
