@@ -235,7 +235,7 @@ You can add or edit model providers:
 ```toml
 [providers.anthropic]
 api_key = "your-api-key"
-base_url = "https://api.mistral.ai/v1"
+base_url = "https://api.anthropic.com/v1"
 ```
 
 You can configure remote/local and fast/deep model preferences:
