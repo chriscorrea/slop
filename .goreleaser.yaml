@@ -1,53 +1,60 @@
-# This is an example .goreleaser.yml file with some sensible defaults.
-# Make sure to check the documentation at https://goreleaser.com
+# .goreleaser.yml
 
-# The lines below are called `modelines`. See `:help modeline`
-# Feel free to remove those if you don't want/need to use them.
-# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+project_name: slop
 
-version: 2
-
+# run before the build.
 before:
   hooks:
-    # You may remove this if you don't use go modules.
     - go mod tidy
-    # you may remove this if you don't need go generate
-    - go generate ./...
 
+# config for build
 builds:
-  - env:
-      - CGO_ENABLED=0
+  - id: slop
+    main: .
+    binary: slop
     goos:
       - linux
       - windows
       - darwin
+    goarch:
+      - amd64
+      - arm64
+
+manpages:
+  - ./man/*.1
+
+checksum:
+  name_template: "checksums.txt"
+
+# package into Homebrew formulas.
+brews:
+  - name: slop
+    tap:
+      owner: chriscorrea
+      name: homebrew-slop
+    homepage: "https://github.com/chriscorrea/slop"
+    description: "Build LLM workflows on the command line"
+    test: |
+      system "#{bin}/slop version"
 
 archives:
-  - formats: [tar.gz]
-    # this name template makes the OS and Arch compatible with the results of `uname`.
-    name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}{{ end }}
-      {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
-    format_overrides:
-      - goos: windows
-        formats: [zip]
+  name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  format_overrides:
+    - goos: windows
+      format: zip
+  # add important files to the archive root (binary auto included)
+  files:
+    - README.md
+    - LICENSE
+    - ./man/*.1
 
 changelog:
   sort: asc
   filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
+    - regexp: '(?i)^(docs|test|style|chore|ci):'
 
+# enables creation of GitHub releases
 release:
-  footer: >-
-
-    ---
-
-    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
+  github:
+    owner: chriscorrea
+    name: slop
