@@ -82,3 +82,7 @@ clean:
 install: build
 	$(info 🐷 installing slop 🐷 )
 	go install ./cmd/slop
+
+cyclo:
+	$(info 🐷 Assessing cyclomatic complexity)
+	gocyclo -top 10 . | grep "^[2-9][0-9]"
