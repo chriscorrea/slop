@@ -76,6 +76,7 @@ type Providers struct {
 	Ollama    Ollama    `mapstructure:"ollama"`
 	Mistral   Mistral   `mapstructure:"mistral"`
 	Groq      Groq      `mapstructure:"groq"`
+	Together  Together  `mapstructure:"together"`
 }
 
 // BaseProvider contains common fields shared across all providers
@@ -107,6 +108,10 @@ type Ollama struct {
 }
 
 type OpenAI struct {
+	BaseProvider `mapstructure:",squash"`
+}
+
+type Together struct {
 	BaseProvider `mapstructure:",squash"`
 }
 

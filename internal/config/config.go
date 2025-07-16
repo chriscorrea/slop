@@ -35,6 +35,7 @@ func NewManager() *Manager {
 	v.RegisterAlias("anthropic-key", "providers.anthropic.api_key")
 	v.RegisterAlias("openai-key", "providers.openai.api_key")
 	v.RegisterAlias("groq-key", "providers.groq.api_key")
+	v.RegisterAlias("together-key", "providers.together.api_key")
 
 	// Bind provider API keys to intuitive environment variable names
 	_ = v.BindEnv("providers.mistral.api_key", "MISTRAL_API_KEY")
@@ -42,6 +43,7 @@ func NewManager() *Manager {
 	_ = v.BindEnv("providers.anthropic.api_key", "ANTHROPIC_API_KEY")
 	_ = v.BindEnv("providers.openai.api_key", "OPENAI_API_KEY")
 	_ = v.BindEnv("providers.groq.api_key", "GROQ_API_KEY")
+	_ = v.BindEnv("providers.together.api_key", "TOGETHER_API_KEY")
 
 	return &Manager{
 		v:   v,
