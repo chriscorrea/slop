@@ -123,7 +123,7 @@ func WithStop(stop []string) GenerateOption {
 	}
 }
 
-// WithJSONFormat enables JSON structured output (availalbe for some models)
+// WithJSONFormat enables JSON structured output (available for some models)
 func WithJSONFormat() GenerateOption {
 	return func(c *GenerateOptions) {
 		common.WithJSONFormat()(&c.GenerateOptions)
