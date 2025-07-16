@@ -367,8 +367,8 @@ func TestProvider_HandleError(t *testing.T) {
 		{
 			name:           "402 - Payment required",
 			statusCode:     http.StatusPaymentRequired,
-			responseBody:   `{"error": {"type": "payment_required", "message": "Payment required"}}`,
-			expectContains: []string{"payment required"},
+			responseBody:   `{"error": {"type": "payment_required"}}`,
+			expectContains: []string{"insufficient credits", "payment information"},
 		},
 	}
 
