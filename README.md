@@ -91,10 +91,16 @@ slop --context RFI-2025-05936.xml \
 
 #### Piped Input
 
-Pipe command output directly into slop for dynamic data processing:
+Pipe command output directly into slop for dynamic data processing. This example uses [sift](https://github.com/chriscorrea/sift) to extract content from a web site:
 
 ```bash
-curl -s https://www.drought.gov/national | \
+sift https://www.drought.gov/national | \
+  slop "which states are most vulnerable to drought?"
+```
+
+Similar results can be achived via [curl](https://github.com/curl/curl) and [pandoc](https://github.com/jgm/pandoc):
+```bash
+curl -sL https://www.drought.gov/national | \
   pandoc -f html -t plain | \
   slop "which states are most vulnerable to drought?"
 ```
@@ -102,14 +108,14 @@ curl -s https://www.drought.gov/national | \
 Chain multiple slop commands to orchestrate multi-stage solutions:
 
 ```bash
-curl -s https://www.drought.gov/national | \
+sift https://www.drought.gov/national 
  pandoc -f html -t plain | \
  slop "Which States are most vulnerable to drought"| \
  slop --context RFI-2025-05936.xml \
  "Which proposed data centers are in areas vulnerable to drought?"
 ```
 
-The results (based on [this proposal](https://www.federalregister.gov/documents/2025/04/07/2025-05936/request-for-information-on-artificial-intelligence-infrastructure-on-doe-lands#h-19)):
+The results (based on [this proposal](https://www.federalregister.gov/documents/2025/04/07/2025-05936/request-for-information-on-artificial-intelligence-infrastructure-on-doe-lands#h-19)) and using gemma3 local model:
 ```plaintext
 Based on the drought conditions you mentioned and the DOE sites listed in the RFI, several proposed data centers are located in drought-vulnerable areas:
 
@@ -172,6 +178,7 @@ You can combine these flags (for example, `-ld`) to specify the right model for 
 - **[Groq](https://groq.com/)**
 - **[Mistral AI](https://mistral.ai/)**
 - **[OpenAI](https://openai.com/)**
+- **[TogetherAI](https://together.ai/)**
 
 ## 🔖 Named Commands
 Create your own library of commands by saving your most common instructions. This lets you build a personalized set of tools for your daily workflows.
