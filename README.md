@@ -98,7 +98,7 @@ sift https://www.drought.gov/national | \
   slop "which states are most vulnerable to drought?"
 ```
 
-Similar results can be achived via [curl](https://github.com/curl/curl) and [pandoc](https://github.com/jgm/pandoc):
+Similar results can be achieved via [curl](https://github.com/curl/curl) and [pandoc](https://github.com/jgm/pandoc):
 ```bash
 curl -sL https://www.drought.gov/national | \
   pandoc -f html -t plain | \
