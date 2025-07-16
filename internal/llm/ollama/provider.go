@@ -34,7 +34,11 @@ func (p *Provider) CreateClient(cfg *config.Config, logger *slog.Logger) (common
 	if logger != nil {
 		opts = append(opts, common.WithLogger(logger))
 	}
-	maxRetries := cfg.Parameters.MaxRetries
+	// use provider-specific MaxRetries, fall back to global if not set
+	maxRetries := cfg.Providers.Ollama.MaxRetries
+	if maxRetries == 0 {
+		maxRetries = cfg.Parameters.MaxRetries
+	}
 	if maxRetries > 5 {
 		maxRetries = 5 // enforce maximum limit
 	}

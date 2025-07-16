@@ -53,7 +53,11 @@ Get an API key from https://console.groq.com/keys`)
 	if logger != nil {
 		opts = append(opts, common.WithLogger(logger))
 	}
-	maxRetries := cfg.Parameters.MaxRetries
+	// use provider-specific MaxRetries, fall back to global if not set
+	maxRetries := cfg.Providers.Groq.MaxRetries
+	if maxRetries == 0 {
+		maxRetries = cfg.Parameters.MaxRetries
+	}
 	if maxRetries > 5 {
 		maxRetries = 5 // enforce maximum limit
 	}
