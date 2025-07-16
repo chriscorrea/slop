@@ -53,6 +53,15 @@
         "fast": "llama-3.1-8b-instant",
         "deep": "llama-3.3-70b-versatile"
       }
+    },
+    "together": {
+      "name": "Together AI",
+      "description": "Fast and efficient LLM inference from Together.AI",
+      "reference": "https://docs.together.ai/docs/models",
+      "models": {
+        "fast": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        "deep": "deepseek-ai/DeepSeek-R1-0528"
+      }
     }
   }
 }

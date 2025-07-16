@@ -13,6 +13,7 @@ import (
 	"github.com/chriscorrea/slop/internal/llm/mock"
 	"github.com/chriscorrea/slop/internal/llm/ollama"
 	"github.com/chriscorrea/slop/internal/llm/openai"
+	"github.com/chriscorrea/slop/internal/llm/together"
 )
 
 // AllProviders contains registered LLM providers
@@ -25,6 +26,7 @@ var AllProviders = map[string]common.Provider{
 	"mock":      mock.New(),
 	"ollama":    ollama.New(),
 	"openai":    openai.New(),
+	"together":  together.New(),
 }
 
 // CreateProvider creates a provider instance using the central registry
