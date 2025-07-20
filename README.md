@@ -204,7 +204,7 @@ temperature = 0.3
 ```
 
 #### Message Templates
-Named commands support `message_template` to customize how user input is integrated into message.
+Named commands support `message_template` to customize how user input is integrated into the message.
 
 Use the `{input}` placeholder to substitute user input at the specified location in the template. If no placeholder is specified, the user input will be appended to the templated message. 
 
