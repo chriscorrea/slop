@@ -284,7 +284,7 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 }
 
 // executeApp handles the common execution logic for both direct prompts and named commands
-func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextResult *slopContext.ContextResult, commandContext string, showCommandInfo bool, commandName string) error {
+func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextResult *slopContext.ContextResult, commandContext string, showCommandInfo bool, commandName string, messageTemplate string) error {
 	// select model using the selector
 	providerName, modelName, err := selectModelForCommand(cmd, cfg, commandName, args)
 	if err != nil {
@@ -315,6 +315,7 @@ func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextRe
 		commandContext, // command context (empty for a direct prompt)
 		providerName,
 		modelName,
+		messageTemplate,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run app: %w", err)
@@ -346,8 +347,8 @@ func handleDirectPrompt(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to process context: %w", err)
 	}
 
-	// exec app with no command context, no command info display
-	return executeApp(cmd, args, cfg, contextResult, "", false, "")
+	// exec app with no command context, no command info display, no message template
+	return executeApp(cmd, args, cfg, contextResult, "", false, "", "")
 }
 
 // selectModelForCommand uses the existing model selector logic
@@ -397,7 +398,7 @@ func handleNamedCommand(cmd *cobra.Command, cmdName string, cmdConfig config.Com
 	}
 
 	// exec app with command context and command info display
-	return executeApp(cmd, args, workingConfig, contextResult, cmdConfig.Context, true, cmdName)
+	return executeApp(cmd, args, workingConfig, contextResult, cmdConfig.Context, true, cmdName, cmdConfig.MessageTemplate)
 }
 
 // createListCommand creates the list subcommand
