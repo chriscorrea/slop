@@ -19,17 +19,17 @@ func ProcessTemplate(template, userInput string) string {
 	if template == "" {
 		return userInput
 	}
-	
+
 	// if template contains the input placeholder, substitute it
 	if strings.Contains(template, InputPlaceholder) {
 		return strings.ReplaceAll(template, InputPlaceholder, userInput)
 	}
-	
+
 	// if no placeholder and no user input, return template only
 	if userInput == "" {
 		return template
 	}
-	
+
 	// if no placeholder but has user input, prepend template
 	return template + "\n" + userInput
 }
