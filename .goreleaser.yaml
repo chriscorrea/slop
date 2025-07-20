@@ -1,5 +1,4 @@
-# .goreleaser.yml
-version: 2
+# .goreleaser.yaml
 project_name: slop
 
 before:
@@ -26,6 +25,7 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser
     binary: slop
 
+# Fixed: archives must be a list, not a map
 archives:
   - id: slop-archives
     format: tar.gz
@@ -39,11 +39,10 @@ archives:
       - README.md
       - man/*
 
-# the 'changelog.filters' key must be a map.
+# Fixed: changelog.filters must be a map with exclude key
 changelog:
   sort: asc
   filters:
-    # 'exclude' is now a key holding a list of regex patterns.
     exclude:
       - '^docs:'
       - '^test:'
@@ -58,16 +57,14 @@ brews:
   - name: slop
     homepage: "https://github.com/chriscorrea/slop"
     description: "Build LLM workflows on the command line"
-    license: "BSD-3-Clause" # Updated to match LICENSE file
-    # The repository for your Homebrew tap.
-    repository:
+    license: "BSD-3-Clause"
+    tap:
       owner: chriscorrea
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     commit_author:
       name: goreleaser-bot
       email: bot@goreleaser.com
-    # instructions for Homebrew to install the binary and the man page.
     install: |
       bin.install "slop"
       man1.install "man/slop.1"
@@ -77,11 +74,9 @@ brews:
 checksum:
   name_template: 'checksums.txt'
 
-# config for snapshot (pre-release) builds.
 snapshot:
-  version_template: "{{ incpatch .Version }}-next"
+  name_template: "{{ incpatch .Version }}-next"
 
-# enables creation of GitHub releases
 release:
   github:
     owner: chriscorrea
