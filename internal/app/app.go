@@ -15,6 +15,7 @@ import (
 	slopIO "github.com/chriscorrea/slop/internal/io"
 	"github.com/chriscorrea/slop/internal/llm/common"
 	"github.com/chriscorrea/slop/internal/registry"
+	"github.com/chriscorrea/slop/internal/template"
 	"github.com/chriscorrea/slop/internal/verbose"
 
 	"github.com/fatih/color"
@@ -136,7 +137,7 @@ func getSpinner(providerName, modelName string) (glyphs []string, speed int) {
 }
 
 // Run executes the main application logic
-func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopContext.ContextResult, commandContext, providerName, modelName string) (string, error) {
+func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopContext.ContextResult, commandContext, providerName, modelName, messageTemplate string) (string, error) {
 	if a.cfg == nil {
 		return "", fmt.Errorf("configuration is nil")
 	}
@@ -175,7 +176,7 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 	}
 
 	// build synthetic message history from structured input
-	messages = append(messages, buildSyntheticMessageHistory(structuredInput)...)
+	messages = append(messages, buildSyntheticMessageHistory(structuredInput, messageTemplate)...)
 
 	// if no messages created, return an error
 	if len(messages) == 0 {
@@ -290,7 +291,7 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 }
 
 // buildSyntheticMessageHistory creates a sequence of user messages from structured input
-func buildSyntheticMessageHistory(input *slopIO.StructuredInput) []common.Message {
+func buildSyntheticMessageHistory(input *slopIO.StructuredInput, messageTemplate string) []common.Message {
 	var messages []common.Message
 
 	// 1: each context file becomes a separate user message
@@ -322,11 +323,15 @@ func buildSyntheticMessageHistory(input *slopIO.StructuredInput) []common.Messag
 	}
 
 	// 4: CLI arg (user prompt) becomes the final/most recent message
-	if input.CLIArgs != "" {
-		messages = append(messages, common.Message{
-			Role:    "user",
-			Content: input.CLIArgs,
-		})
+	// apply message template processing if template is provided
+	if input.CLIArgs != "" || messageTemplate != "" {
+		content := template.ProcessTemplate(messageTemplate, input.CLIArgs)
+		if content != "" {
+			messages = append(messages, common.Message{
+				Role:    "user",
+				Content: content,
+			})
+		}
 	}
 
 	return messages

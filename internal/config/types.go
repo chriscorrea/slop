@@ -117,8 +117,9 @@ type Together struct {
 
 // Command represents a named command with overrideable settings
 type Command struct {
-	Description  string `mapstructure:"description"`
-	SystemPrompt string `mapstructure:"system_prompt"`
+	Description     string `mapstructure:"description"`
+	SystemPrompt    string `mapstructure:"system_prompt"`
+	MessageTemplate string `mapstructure:"message_template"`
 
 	ModelType string `toml:"model_type,omitempty"` // allows local-deep, etc
 

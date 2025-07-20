@@ -1,6 +1,7 @@
 # Slop
 
 [![Go Version](https://img.shields.io/github/go-mod/go-version/chriscorrea/slop)](go.mod)
+[![Go Report Card](https://goreportcard.com/badge/github.com/chriscorrea/slop)](https://goreportcard.com/report/github.com/chriscorrea/slop)
 [![CI](https://github.com/chriscorrea/slop/actions/workflows/push.yml/badge.svg?branch=main)](https://github.com/chriscorrea/slop/actions/workflows/push.yml)
 [![Latest Release](https://img.shields.io/github/v/release/chriscorrea/slop)](https://github.com/chriscorrea/slop/releases)
 
@@ -190,18 +191,30 @@ To create a new command, add a [commands.<name>] section to the `/.slop/commands
 [commands.review]
 description = "Python code reviewer"
 system_prompt = """You are an expert Python programmer. 
-  Analyze the provided code and deliver a review with a focus on security, performance, and maintainability.
-  Your feedback must be actionable and constructive.
-  For each suggestion, include a 'before' and 'after' code snippet."""
+  Analyze the provided code and deliver a review with a focus on security, performance, and maintainability."""
+
+message_template = """Please review this code: 
+```
+{input}
+```
+List actionable and constructive suggestions and conclude with a improved code snippet."""
+
 model_type = "deep"
 temperature = 0.3
 ```
+
+#### Message Templates
+Named commands support `message_template` to customize how user input is integrated into the message.
+
+Use the `{input}` placeholder to substitute user input at the specified location in the template. If no placeholder is specified, the user input will be appended to the templated message. 
 
 #### Usage
 Once configured, you can use your named workflow by passing its name to slop. The command will automatically apply your saved configuration.
 
 ```bash
 cat *.py | slop review
+slop analyze "this function"
+slop docs "the API endpoint"  
 ```
 
 ## 🗄️ Persistent Context
