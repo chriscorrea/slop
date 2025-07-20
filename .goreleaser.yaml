@@ -60,7 +60,7 @@ brews:
     license: "BSD-3-Clause"
     tap:
       owner: chriscorrea
-      name: homebrew-tap
+      name: homebrew-slop
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     commit_author:
       name: goreleaser-bot
