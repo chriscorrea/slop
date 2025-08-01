@@ -159,6 +159,7 @@ var rootCmd = &cobra.Command{
 			"max-retries":    "parameters.max_retries",
 			"timeout":        "parameters.timeout",
 			"test":           "test",
+			"exit-code-map":  "exit_code_map",
 		}
 
 		// bind each flag to corresponding Viper key
@@ -237,10 +238,18 @@ func init() {
 	rootCmd.PersistentFlags().Bool("md", false, "Format response as Markdown")
 	rootCmd.PersistentFlags().Bool("xml", false, "Format response as XML")
 
+	// Exit code flags for workflow automation
+	rootCmd.PersistentFlags().Bool("exit-sentiment", false, "Exit with code 10 (positive), 11 (negative), or 12 (neutral)")
+	rootCmd.PersistentFlags().Bool("sentiment", false, "Alias for --exit-sentiment")
+	rootCmd.PersistentFlags().Bool("exit-pass-fail", false, "Exit with code 30 (pass) or 31 (fail)")  
+	rootCmd.PersistentFlags().Bool("pass-fail", false, "Alias for --exit-pass-fail")
+	rootCmd.PersistentFlags().String("exit-code-map", "", "Apply a custom, user-defined exit code map from your config")
+
 	// mark the mutually exclusive flags
 	rootCmd.MarkFlagsMutuallyExclusive("fast", "deep")
 	rootCmd.MarkFlagsMutuallyExclusive("local", "remote")
 	rootCmd.MarkFlagsMutuallyExclusive("json", "jsonl", "yaml", "md", "xml")
+	rootCmd.MarkFlagsMutuallyExclusive("exit-sentiment", "sentiment", "exit-pass-fail", "pass-fail", "exit-code-map")
 
 	// list of flags to hide for now
 	flagsToHide := []string{"test", "stream"}
@@ -284,7 +293,7 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 }
 
 // executeApp handles the common execution logic for both direct prompts and named commands
-func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextResult *slopContext.ContextResult, commandContext string, showCommandInfo bool, commandName string, messageTemplate string) error {
+func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextResult *slopContext.ContextResult, commandContext string, showCommandInfo bool, commandName string, messageTemplate string, exitMode string) error {
 	// select model using the selector
 	providerName, modelName, err := selectModelForCommand(cmd, cfg, commandName, args)
 	if err != nil {
@@ -308,7 +317,7 @@ func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextRe
 	appInstance := app.NewApp(cfg, state.logger, verbose)
 
 	// run the app
-	output, err := appInstance.Run(
+	output, exitCode, err := appInstance.Run(
 		cmd.Context(),
 		args, // user prompt arguments
 		contextResult,
@@ -316,12 +325,19 @@ func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextRe
 		providerName,
 		modelName,
 		messageTemplate,
+		exitMode,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run app: %w", err)
 	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), output)
+	
+	// exit with determined code if not 0
+	if exitCode != 0 {
+		os.Exit(exitCode)
+	}
+	
 	return nil
 }
 
@@ -347,8 +363,11 @@ func handleDirectPrompt(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to process context: %w", err)
 	}
 
+	// get exit mode for direct prompts (no command config)
+	exitMode := getExitMode(cmd, nil)
+	
 	// exec app with no command context, no command info display, no message template
-	return executeApp(cmd, args, cfg, contextResult, "", false, "", "")
+	return executeApp(cmd, args, cfg, contextResult, "", false, "", "", exitMode)
 }
 
 // selectModelForCommand uses the existing model selector logic
@@ -374,6 +393,33 @@ func selectModelForCommand(cmd *cobra.Command, cfg *config.Config, cmdName strin
 	return providerName, modelName, nil
 }
 
+// getExitMode determines which exit mode is active based on flags and command config
+func getExitMode(cmd *cobra.Command, cmdConfig *config.Command) string {
+	// Check CLI flags first, as they have the highest precedence
+	if sentiment, _ := cmd.Flags().GetBool("exit-sentiment"); sentiment {
+		return "sentiment"
+	}
+	if sentiment, _ := cmd.Flags().GetBool("sentiment"); sentiment {
+		return "sentiment"
+	}
+	if passFail, _ := cmd.Flags().GetBool("exit-pass-fail"); passFail {
+		return "pass-fail"
+	}
+	if passFail, _ := cmd.Flags().GetBool("pass-fail"); passFail {
+		return "pass-fail"
+	}
+	if customMap, _ := cmd.Flags().GetString("exit-code-map"); customMap != "" {
+		return customMap
+	}
+
+	// If no flags are set, check the named command's configuration
+	if cmdConfig != nil && cmdConfig.ExitCodeMap != "" {
+		return cmdConfig.ExitCodeMap
+	}
+
+	return "" // No exit mode active
+}
+
 // handleNamedCommand handles execution of a named command
 func handleNamedCommand(cmd *cobra.Command, cmdName string, cmdConfig config.Command, args []string) error {
 	if state.manager == nil {
@@ -397,8 +443,11 @@ func handleNamedCommand(cmd *cobra.Command, cmdName string, cmdConfig config.Com
 		return fmt.Errorf("failed to process context: %w", err)
 	}
 
+	// get exit mode using command config (CLI flags take precedence)
+	exitMode := getExitMode(cmd, &cmdConfig)
+	
 	// exec app with command context and command info display
-	return executeApp(cmd, args, workingConfig, contextResult, cmdConfig.Context, true, cmdName, cmdConfig.MessageTemplate)
+	return executeApp(cmd, args, workingConfig, contextResult, cmdConfig.Context, true, cmdName, cmdConfig.MessageTemplate, exitMode)
 }
 
 // createListCommand creates the list subcommand

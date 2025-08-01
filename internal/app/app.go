@@ -48,6 +48,27 @@ func enhanceSystemPromptForFormat(basePrompt string, format config.Format) strin
 	return basePrompt
 }
 
+// enhanceSystemPromptForExitCode adds instructions for exit code modes
+func enhanceSystemPromptForExitCode(basePrompt string, exitMode string) string {
+	var instruction string
+
+	switch exitMode {
+	case "sentiment":
+		instruction = "IMPORTANT: Start your response with exactly one of these words: POSITIVE, NEGATIVE, or NEUTRAL. Be direct and clear."
+	case "pass-fail":
+		instruction = "IMPORTANT: Start your response with exactly one of these words: PASS or FAIL. Be direct and clear."
+	}
+
+	if instruction != "" {
+		if basePrompt == "" {
+			return instruction
+		}
+		return basePrompt + "\n\n" + instruction
+	}
+
+	return basePrompt
+}
+
 // cleanFormattedResponse removes text outside format boundaries
 func cleanFormattedResponse(response string, cfg config.Format) string {
 	return format.CleanResponse(response, cfg)
@@ -137,9 +158,9 @@ func getSpinner(providerName, modelName string) (glyphs []string, speed int) {
 }
 
 // Run executes the main application logic
-func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopContext.ContextResult, commandContext, providerName, modelName, messageTemplate string) (string, error) {
+func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopContext.ContextResult, commandContext, providerName, modelName, messageTemplate, exitMode string) (string, int, error) {
 	if a.cfg == nil {
-		return "", fmt.Errorf("configuration is nil")
+		return "", 0, fmt.Errorf("configuration is nil")
 	}
 
 	// read input using structured processing for synthetic message history
@@ -153,13 +174,13 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 
 	structuredInput, err := slopIO.ReadInput(os.Stdin, cliArgs, contextFiles, commandContext)
 	if err != nil {
-		return "", fmt.Errorf("failed to read structured input: %w", err)
+		return "", 0, fmt.Errorf("failed to read structured input: %w", err)
 	}
 
 	// create a provider using the registry
 	provider, err := registry.CreateProvider(providerName, a.cfg, a.logger)
 	if err != nil {
-		return "", fmt.Errorf("failed to create provider: %w", err)
+		return "", 0, fmt.Errorf("failed to create provider: %w", err)
 	}
 
 	// create messages using either synthetic message history or traditional approach
@@ -167,6 +188,9 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 
 	// apply format instructions regardless of native structured output support
 	enhancedSystemPrompt := enhanceSystemPromptForFormat(a.cfg.Parameters.SystemPrompt, a.cfg.Format)
+	
+	// add exit code specific instructions for clearer responses
+	enhancedSystemPrompt = enhanceSystemPromptForExitCode(enhancedSystemPrompt, exitMode)
 
 	if enhancedSystemPrompt != "" {
 		messages = append(messages, common.Message{
@@ -180,7 +204,7 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 
 	// if no messages created, return an error
 	if len(messages) == 0 {
-		return "", fmt.Errorf("no input provided")
+		return "", 0, fmt.Errorf("no input provided")
 	}
 
 	// display verbose output if enabled
@@ -281,13 +305,26 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 	time.Sleep(10 * time.Millisecond)
 
 	if err != nil {
-		return "", fmt.Errorf("failed to generate response: %w", err)
+		return "", 0, fmt.Errorf("failed to generate response: %w", err)
 	}
 
 	// clean the response based on format requirements
 	cleanedResponse := cleanFormattedResponse(response, a.cfg.Format)
 
-	return cleanedResponse, nil
+	// determine exit code based on exit mode
+	var exitCode int
+	switch {
+	case exitMode == "sentiment":
+		exitCode = determineSentimentExitCode(cleanedResponse)
+	case exitMode == "pass-fail":
+		exitCode = determinePassFailExitCode(cleanedResponse)
+	case exitMode != "": // Assumes this is a custom map name
+		exitCode = a.determineCustomExitCode(cleanedResponse, exitMode)
+	default:
+		exitCode = 0 // No mode active
+	}
+
+	return cleanedResponse, exitCode, nil
 }
 
 // buildSyntheticMessageHistory creates a sequence of user messages from structured input

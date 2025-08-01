@@ -6,6 +6,7 @@ type Config struct {
 	Models     Models             `mapstructure:"models"`
 	Providers  Providers          `mapstructure:"providers"`
 	Commands   map[string]Command `mapstructure:"commands"`
+	ExitCodes  map[string]ExitCodeMap `mapstructure:"exit_codes"`
 	Format     Format             `mapstructure:"format"`
 }
 
@@ -36,6 +37,19 @@ type Format struct {
 	YAML  bool `mapstructure:"yaml"`
 	MD    bool `mapstructure:"md"`
 	XML   bool `mapstructure:"xml"`
+}
+
+// ExitCodeRule defines a pattern and exit code for a workflow
+type ExitCodeRule struct {
+	MatchType string `mapstructure:"match_type"` // "exact", "contains", "regex", "prefix", "suffix"
+	Pattern   string `mapstructure:"pattern"`
+	ExitCode  int    `mapstructure:"exit_code"`
+}
+
+// ExitCodeMap is a named set of rules for determining a workflow exit code
+type ExitCodeMap struct {
+	Description string         `mapstructure:"description"`
+	Rules       []ExitCodeRule `mapstructure:"rules"`
 }
 
 // Models contains model configuration for different categories
@@ -130,6 +144,9 @@ type Command struct {
 	// Context support - both direct and file-based
 	Context      string   `mapstructure:"context"`       // direct context string (supports multiline)
 	ContextFiles []string `mapstructure:"context_files"` // file paths to include
+
+	// Exit code configuration
+	ExitCodeMap string `mapstructure:"exit_code_map"` // name of exit code map to use
 }
 
 // ReservedCommands are command names that cannot be overridden by users

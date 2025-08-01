@@ -257,6 +257,33 @@ To receive a structured response, add one of the following flags to your command
 
 Note that format flags are mutually exclusive.
 
+## 🔄 Workflow Exit Codes
+
+Slop can return structured exit codes based on LLM responses, enabling automation and routing in shell scripts and CI/CD pipelines. This makes slop a powerful building block for decision-making workflows.
+
+Exit codes allow you to branch logic based on AI analysis results. The `--sentiment` flag returns exit code 10 for positive responses, 11 for negative, and 12 for neutral. The `--pass-fail` flag returns 30 for pass and 31 for fail. When no pattern matches, slop exits with code 0, preserving composability with other tools.
+
+```bash
+# Route based on sentiment analysis
+if slop --sentiment "The quarterly results exceeded expectations by 15%"; then
+  case $? in
+    10) echo "Positive sentiment detected - sending to marketing team" ;;
+    11) echo "Negative sentiment detected - escalating to management" ;;
+    12) echo "Neutral sentiment - no action needed" ;;
+  esac
+fi
+
+# Automated code review with pass/fail routing
+slop --pass-fail --context main.py "Does this code follow security best practices?" 
+if [ $? -eq 30 ]; then
+  echo "Code passed security review - proceeding with deployment"
+  deploy_to_production
+else
+  echo "Code failed security review - blocking deployment" 
+  exit 1
+fi
+```
+
 ## ⚙️ Configuration
 
 #### Command-Line Configuration
