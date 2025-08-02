@@ -1,9 +1,19 @@
 package context
 
+import "github.com/chriscorrea/slop/internal/llm/common"
+
 // ContextFile represents a single context file with its path and content
 type ContextFile struct {
 	Path    string
 	Content string
+}
+
+// ContextItem represents a processed context item with type information
+type ContextItem struct {
+	Path     string           // file path
+	Type     string           // "conversation" or "file"
+	Messages []common.Message // for conversations
+	Content  string           // for raw files
 }
 
 // ContextResult contains the result of context processing
@@ -13,6 +23,8 @@ type ContextResult struct {
 	CmdContextFiles []string
 	// Structured context data for synthetic message history
 	ContextFileContents []ContextFile
+	// Enhanced structured context data with conversation detection
+	ProcessedItems []ContextItem
 }
 
 // HasContextFiles returns true if any context files are present

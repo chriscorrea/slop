@@ -67,3 +67,22 @@ jsonl = false
 yaml = false
 md = false
 xml = false
+
+# Exit code maps for workflow automation
+[exit_codes]
+
+  [exit_codes.approval]
+    description = "Exits based on a three-stage approval status."
+    rules = [
+      { match_type = "contains", pattern = "APPROVED", exit_code = 20 },
+      { match_type = "contains", pattern = "REJECTED", exit_code = 21 },
+      { match_type = "contains", pattern = "NEEDS_REVIEW", exit_code = 22 },
+    ]
+
+  [exit_codes.priority]
+    description = "Exit codes based on priority levels."
+    rules = [
+      { match_type = "regex", pattern = "(?i)\\b(urgent|critical|high)\\b", exit_code = 30 },
+      { match_type = "regex", pattern = "(?i)\\b(medium|normal)\\b", exit_code = 31 },
+      { match_type = "regex", pattern = "(?i)\\b(low|minor)\\b", exit_code = 32 },
+    ]

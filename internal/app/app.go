@@ -48,6 +48,27 @@ func enhanceSystemPromptForFormat(basePrompt string, format config.Format) strin
 	return basePrompt
 }
 
+// enhanceSystemPromptForExitCode adds instructions for exit code modes
+func enhanceSystemPromptForExitCode(basePrompt string, exitMode string) string {
+	var instruction string
+
+	switch exitMode {
+	case "sentiment":
+		instruction = "IMPORTANT: Start your response with exactly one of these words: POSITIVE, NEGATIVE, or NEUTRAL. Be direct and clear."
+	case "pass-fail":
+		instruction = "IMPORTANT: Start your response with exactly one of these words: PASS or FAIL. Be direct and clear."
+	}
+
+	if instruction != "" {
+		if basePrompt == "" {
+			return instruction
+		}
+		return basePrompt + "\n\n" + instruction
+	}
+
+	return basePrompt
+}
+
 // cleanFormattedResponse removes text outside format boundaries
 func cleanFormattedResponse(response string, cfg config.Format) string {
 	return format.CleanResponse(response, cfg)
@@ -137,9 +158,9 @@ func getSpinner(providerName, modelName string) (glyphs []string, speed int) {
 }
 
 // Run executes the main application logic
-func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopContext.ContextResult, commandContext, providerName, modelName, messageTemplate string) (string, error) {
+func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopContext.ContextResult, commandContext, providerName, modelName, messageTemplate, exitMode string) (string, int, error) {
 	if a.cfg == nil {
-		return "", fmt.Errorf("configuration is nil")
+		return "", 0, fmt.Errorf("configuration is nil")
 	}
 
 	// read input using structured processing for synthetic message history
@@ -153,13 +174,13 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 
 	structuredInput, err := slopIO.ReadInput(os.Stdin, cliArgs, contextFiles, commandContext)
 	if err != nil {
-		return "", fmt.Errorf("failed to read structured input: %w", err)
+		return "", 0, fmt.Errorf("failed to read structured input: %w", err)
 	}
 
 	// create a provider using the registry
 	provider, err := registry.CreateProvider(providerName, a.cfg, a.logger)
 	if err != nil {
-		return "", fmt.Errorf("failed to create provider: %w", err)
+		return "", 0, fmt.Errorf("failed to create provider: %w", err)
 	}
 
 	// create messages using either synthetic message history or traditional approach
@@ -168,6 +189,9 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 	// apply format instructions regardless of native structured output support
 	enhancedSystemPrompt := enhanceSystemPromptForFormat(a.cfg.Parameters.SystemPrompt, a.cfg.Format)
 
+	// add exit code specific instructions for clearer responses
+	enhancedSystemPrompt = enhanceSystemPromptForExitCode(enhancedSystemPrompt, exitMode)
+
 	if enhancedSystemPrompt != "" {
 		messages = append(messages, common.Message{
 			Role:    "system",
@@ -175,18 +199,34 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 		})
 	}
 
-	// build synthetic message history from structured input
-	messages = append(messages, buildSyntheticMessageHistory(structuredInput, messageTemplate)...)
+	// build synthetic message history from structured input and context result
+	messages = append(messages, buildSyntheticMessageHistory(structuredInput, contextResult, messageTemplate)...)
 
 	// if no messages created, return an error
 	if len(messages) == 0 {
-		return "", fmt.Errorf("no input provided")
+		return "", 0, fmt.Errorf("no input provided")
 	}
 
 	// display verbose output if enabled
 	if a.verbose {
 		outputCfg := verbose.DefaultOutputConfig(os.Stderr)
 		verbose.PrintLLMParameters(a.cfg, providerName, modelName, outputCfg)
+
+		// show context processing details
+		if contextResult != nil && len(contextResult.ProcessedItems) > 0 {
+			fmt.Fprintln(os.Stderr)
+			fmt.Fprintln(os.Stderr, "Context Processing:")
+			for _, item := range contextResult.ProcessedItems {
+				switch item.Type {
+				case "conversation":
+					fmt.Fprintf(os.Stderr, "  %s (conversation, %d messages)\n",
+						filepath.Base(item.Path), len(item.Messages))
+				case "file":
+					fmt.Fprintf(os.Stderr, "  %s (text file, %d chars)\n",
+						filepath.Base(item.Path), len(item.Content))
+				}
+			}
+		}
 	}
 
 	// log request parameters when debug is enabled
@@ -281,32 +321,63 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 	time.Sleep(10 * time.Millisecond)
 
 	if err != nil {
-		return "", fmt.Errorf("failed to generate response: %w", err)
+		return "", 0, fmt.Errorf("failed to generate response: %w", err)
 	}
 
 	// clean the response based on format requirements
 	cleanedResponse := cleanFormattedResponse(response, a.cfg.Format)
 
-	return cleanedResponse, nil
+	// determine exit code based on exit mode
+	var exitCode int
+	switch {
+	case exitMode == "sentiment":
+		exitCode = determineSentimentExitCode(cleanedResponse)
+	case exitMode == "pass-fail":
+		exitCode = determinePassFailExitCode(cleanedResponse)
+	case exitMode != "": // assume this is a custom map name
+		exitCode = a.determineCustomExitCode(cleanedResponse, exitMode)
+	default:
+		exitCode = 0 // no mode active
+	}
+
+	return cleanedResponse, exitCode, nil
+}
+
+// createFileMessage formats a file's content as a user message
+func createFileMessage(path, content string) common.Message {
+	return common.Message{
+		Role:    "user",
+		Content: fmt.Sprintf("File: %s\n\n%s", path, content),
+	}
 }
 
 // buildSyntheticMessageHistory creates a sequence of user messages from structured input
-func buildSyntheticMessageHistory(input *slopIO.StructuredInput, messageTemplate string) []common.Message {
+func buildSyntheticMessageHistory(input *slopIO.StructuredInput, contextResult *slopContext.ContextResult, messageTemplate string) []common.Message {
 	var messages []common.Message
 
-	// 1: each context file becomes a separate user message
-	for _, contextFile := range input.ContextFiles {
-		if contextFile.Content != "" {
-			// include file path information for better context?
-			content := fmt.Sprintf("File: %s\n\n%s", contextFile.Path, contextFile.Content)
-			messages = append(messages, common.Message{
-				Role:    "user",
-				Content: content,
-			})
+	// 1: process context items with smart conversation detection
+	if contextResult != nil && len(contextResult.ProcessedItems) > 0 {
+		// use the enhanced processed items that support conversations
+		for _, item := range contextResult.ProcessedItems {
+			switch item.Type {
+			case "conversation":
+				// append conversation messages directly (preserves roles)
+				messages = append(messages, item.Messages...)
+			case "file":
+				// wrap as user message with file header (existing behavior)
+				messages = append(messages, createFileMessage(item.Path, item.Content))
+			}
+		}
+	} else if input != nil {
+		// fallback to legacy context file processing for backward compatibility
+		for _, contextFile := range input.ContextFiles {
+			if contextFile.Content != "" {
+				messages = append(messages, createFileMessage(contextFile.Path, contextFile.Content))
+			}
 		}
 	}
 
-	// 2: stdin content becomes a user message (if present)
+	// 2:stdin content becomes a user message (if present)
 	if input.StdinContent != "" {
 		messages = append(messages, common.Message{
 			Role:    "user",

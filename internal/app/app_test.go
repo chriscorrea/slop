@@ -131,9 +131,10 @@ func TestApp_SyntheticMessageHistory_BasicScenario(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "")
+	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "", "")
 
 	assert.NoError(t, err)
+	assert.Equal(t, 0, exitCode)
 	assert.Equal(t, "mocked response", result)
 	mockLLM.AssertExpectations(t)
 }
@@ -201,9 +202,10 @@ func TestApp_SyntheticMessageHistory_ContextFiles(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"analyze these files"}, contextResult, "", "test-provider", "test-model", "")
+	result, exitCode, err := app.Run(ctx, []string{"analyze these files"}, contextResult, "", "test-provider", "test-model", "", "")
 
 	assert.NoError(t, err)
+	assert.Equal(t, 0, exitCode)
 	assert.Equal(t, "analysis response", result)
 	mockLLM.AssertExpectations(t)
 }
@@ -269,9 +271,10 @@ func TestApp_SyntheticMessageHistory_ComplexScenario(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"find security vulnerabilities"}, contextResult, "You are reviewing windmill plans", "test-provider", "test-model", "")
+	result, exitCode, err := app.Run(ctx, []string{"find security vulnerabilities"}, contextResult, "You are reviewing windmill plans", "test-provider", "test-model", "", "")
 
 	assert.NoError(t, err)
+	assert.Equal(t, 0, exitCode)
 	assert.Equal(t, "security analysis", result)
 	mockLLM.AssertExpectations(t)
 }
@@ -314,9 +317,10 @@ func TestApp_SyntheticMessageHistory_EmptyContextFiles(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"process files"}, contextResult, "", "test-provider", "test-model", "")
+	result, exitCode, err := app.Run(ctx, []string{"process files"}, contextResult, "", "test-provider", "test-model", "", "")
 
 	assert.NoError(t, err)
+	assert.Equal(t, 0, exitCode)
 	assert.Equal(t, "processed", result)
 	mockLLM.AssertExpectations(t)
 }
@@ -382,9 +386,10 @@ func TestApp_SyntheticMessageHistory_ManyContextFiles(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"summarize all files"}, contextResult, "", "test-provider", "test-model", "")
+	result, exitCode, err := app.Run(ctx, []string{"summarize all files"}, contextResult, "", "test-provider", "test-model", "", "")
 
 	assert.NoError(t, err)
+	assert.Equal(t, 0, exitCode)
 	assert.Equal(t, "summary of all files", result)
 	mockLLM.AssertExpectations(t)
 }
@@ -401,7 +406,7 @@ func TestBuildSyntheticMessageHistory_WithStdin(t *testing.T) {
 	}
 
 	// build synthetic message history
-	messages := buildSyntheticMessageHistory(input, "")
+	messages := buildSyntheticMessageHistory(input, nil, "")
 
 	// verify correct order: context files, stdin, command context, CLI args
 	assert.Len(t, messages, 4)
@@ -437,7 +442,7 @@ func TestBuildSyntheticMessageHistory_AllMessageTypes(t *testing.T) {
 	}
 
 	// build synthetic message history
-	messages := buildSyntheticMessageHistory(input, "")
+	messages := buildSyntheticMessageHistory(input, nil, "")
 
 	// verify correct order and count: 2 context files + stdin + command context + CLI args = 5 messages
 	assert.Len(t, messages, 5)
@@ -476,9 +481,10 @@ func TestApp_Run_CreateProvider_Error(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "nonexistent", "test-model", "")
+	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "nonexistent", "test-model", "", "")
 
 	assert.Error(t, err)
+	assert.Equal(t, 0, exitCode)
 	assert.Empty(t, result)
 	assert.Contains(t, err.Error(), "failed to create provider")
 	assert.Contains(t, err.Error(), "unsupported provider 'nonexistent'")
@@ -505,9 +511,10 @@ func TestApp_Run_Generate_Error(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "")
+	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "", "")
 
 	assert.Error(t, err)
+	assert.Equal(t, 0, exitCode)
 	assert.Empty(t, result)
 	assert.Contains(t, err.Error(), "failed to generate response")
 	assert.ErrorIs(t, err, expectedError)
@@ -525,9 +532,10 @@ func TestApp_Run_NoInput_Error(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{}, createEmptyContextResult(), "", "mock", "test-model", "")
+	result, exitCode, err := app.Run(ctx, []string{}, createEmptyContextResult(), "", "mock", "test-model", "", "")
 
 	assert.Error(t, err)
+	assert.Equal(t, 0, exitCode)
 	assert.Empty(t, result)
 	assert.Contains(t, err.Error(), "no input provided")
 }
@@ -536,9 +544,10 @@ func TestApp_Run_NilConfig_Error(t *testing.T) {
 	app := NewApp(nil, slog.Default(), false)
 
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "")
+	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "", "")
 
 	assert.Error(t, err)
+	assert.Equal(t, 0, exitCode)
 	assert.Empty(t, result)
 	assert.Contains(t, err.Error(), "configuration is nil")
 }
@@ -574,9 +583,10 @@ func TestApp_Run_FormatEnhancement_JSON(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "")
+	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "", "")
 
 	assert.NoError(t, err)
+	assert.Equal(t, 0, exitCode)
 	assert.NotEmpty(t, result)
 	mockLLM.AssertExpectations(t)
 }
@@ -682,7 +692,7 @@ func TestBuildSyntheticMessageHistory_WithMessageTemplate(t *testing.T) {
 			}
 
 			// build synthetic message history with template
-			messages := buildSyntheticMessageHistory(input, tt.messageTemplate)
+			messages := buildSyntheticMessageHistory(input, nil, tt.messageTemplate)
 
 			if tt.expectedContent == "" {
 				// if expected content is empty, we should have no messages
@@ -728,9 +738,10 @@ func TestApp_Run_WithMessageTemplate(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, err := app.Run(ctx, []string{"function main() {}"}, createEmptyContextResult(), "", "test-provider", "test-model", "Please review: {input}")
+	result, exitCode, err := app.Run(ctx, []string{"function main() {}"}, createEmptyContextResult(), "", "test-provider", "test-model", "Please review: {input}", "")
 
 	assert.NoError(t, err)
+	assert.Equal(t, 0, exitCode)
 	assert.Equal(t, "Code review complete", result)
 	mockLLM.AssertExpectations(t)
 }

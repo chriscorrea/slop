@@ -110,8 +110,7 @@ Chain multiple slop commands to orchestrate multi-stage solutions:
 
 ```bash
 sift https://www.drought.gov/national 
- pandoc -f html -t plain | \
- slop "Which States are most vulnerable to drought"| \
+ slop "Which states are most vulnerable to drought?"| \
  slop --context RFI-2025-05936.xml \
  "Which proposed data centers are in areas vulnerable to drought?"
 ```
@@ -256,6 +255,35 @@ To receive a structured response, add one of the following flags to your command
 - `--xml`: Format response as XML
 
 Note that format flags are mutually exclusive.
+
+## 🔄 Exit Codes
+
+Structured exit codes can facilitate automation and routing in shell scripts.
+
+Exit codes allow you to branch logic based on AI analysis results. The `--sentiment` flag returns exit code 10 for positive responses, 11 for negative, and 12 for neutral. The `--pass-fail` flag returns 30 for pass and 31 for fail. When no pattern matches, slop exits with code 0, preserving composability with other tools.
+
+```bash
+# sentiment-based routing
+if slop --sentiment "Let's face it: our lives are miserable, laborious, and short!"; then
+  case $? in
+    10) echo "Positive sentiment detected - escalating to propaganda team" ;;
+    11) echo "Negative sentiment detected - escalating to quality improvement team" ;;
+    12) echo "Neutral sentiment - no action needed" ;;
+  esac
+fi
+
+# code review with pass/fail routing
+slop --pass-fail --context main.py "Does this code follow security best practices?" 
+if [ $? -eq 30 ]; then
+  echo "Code passed security review - proceeding with deployment"
+  deploy_to_production
+else
+  echo "Code failed security review - blocking deployment" 
+  exit 1
+fi
+```
+
+You can also define custom exit codes in your `config.TOML`
 
 ## ⚙️ Configuration
 

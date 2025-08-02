@@ -17,7 +17,7 @@ import (
 )
 
 // current version (hardcoded for now, could be replaced with build flags)
-const version = "0.1.0"
+const version = "0.1.3"
 
 // rootCmdState holds the config manager and logger for the command
 type rootCmdState struct {
@@ -103,7 +103,7 @@ var rootCmd = &cobra.Command{
 	Version:      version,
 	Short:        "A CLI tool for interacting with LLMs",
 	Long:         `Slop brings large language models to your command line. It is inspired by the idea that language models work best as composable language operators`,
-	SilenceUsage: true, // Don't show usage after errors
+	SilenceUsage: true, // don't show usage after errors
 
 	// accept any arguments and pass them to RunE
 	Args: cobra.ArbitraryArgs,
@@ -118,7 +118,7 @@ var rootCmd = &cobra.Command{
 		// instantiate the config manager with logger
 		state.manager = config.NewManager().WithLogger(state.logger)
 
-		// Get the config flag value
+		// get the config flag value
 		configPath, err := cmd.Flags().GetString("config")
 		if err != nil {
 			return fmt.Errorf("failed to get config flag: %w", err)
@@ -159,6 +159,7 @@ var rootCmd = &cobra.Command{
 			"max-retries":    "parameters.max_retries",
 			"timeout":        "parameters.timeout",
 			"test":           "test",
+			"exit-code":      "exit_code_map",
 		}
 
 		// bind each flag to corresponding Viper key
@@ -237,10 +238,16 @@ func init() {
 	rootCmd.PersistentFlags().Bool("md", false, "Format response as Markdown")
 	rootCmd.PersistentFlags().Bool("xml", false, "Format response as XML")
 
+	// exit code flags to facilitate automated workflows (mutually exclusive)
+	rootCmd.PersistentFlags().Bool("sentiment", false, "Exit with code 10 (positive), 11 (negative), or 12 (neutral)")
+	rootCmd.PersistentFlags().Bool("pass-fail", false, "Exit with code 30 (pass) or 31 (fail)")
+	rootCmd.PersistentFlags().String("exit-code", "", "Apply a custom exit code map from your config")
+
 	// mark the mutually exclusive flags
 	rootCmd.MarkFlagsMutuallyExclusive("fast", "deep")
 	rootCmd.MarkFlagsMutuallyExclusive("local", "remote")
 	rootCmd.MarkFlagsMutuallyExclusive("json", "jsonl", "yaml", "md", "xml")
+	rootCmd.MarkFlagsMutuallyExclusive("sentiment", "pass-fail", "exit-code")
 
 	// list of flags to hide for now
 	flagsToHide := []string{"test", "stream"}
@@ -284,7 +291,7 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 }
 
 // executeApp handles the common execution logic for both direct prompts and named commands
-func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextResult *slopContext.ContextResult, commandContext string, showCommandInfo bool, commandName string, messageTemplate string) error {
+func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextResult *slopContext.ContextResult, commandContext string, showCommandInfo bool, commandName string, messageTemplate string, exitMode string) error {
 	// select model using the selector
 	providerName, modelName, err := selectModelForCommand(cmd, cfg, commandName, args)
 	if err != nil {
@@ -308,7 +315,7 @@ func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextRe
 	appInstance := app.NewApp(cfg, state.logger, verbose)
 
 	// run the app
-	output, err := appInstance.Run(
+	output, exitCode, err := appInstance.Run(
 		cmd.Context(),
 		args, // user prompt arguments
 		contextResult,
@@ -316,12 +323,19 @@ func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextRe
 		providerName,
 		modelName,
 		messageTemplate,
+		exitMode,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run app: %w", err)
 	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), output)
+
+	// exit with determined code if not 0
+	if exitCode != 0 {
+		os.Exit(exitCode)
+	}
+
 	return nil
 }
 
@@ -347,14 +361,17 @@ func handleDirectPrompt(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to process context: %w", err)
 	}
 
+	// get exit mode for direct prompts (no command config)
+	exitMode := getExitMode(cmd, nil)
+
 	// exec app with no command context, no command info display, no message template
-	return executeApp(cmd, args, cfg, contextResult, "", false, "", "")
+	return executeApp(cmd, args, cfg, contextResult, "", false, "", "", exitMode)
 }
 
 // selectModelForCommand uses the existing model selector logic
 func selectModelForCommand(cmd *cobra.Command, cfg *config.Config, cmdName string, args []string) (string, string, error) {
 
-	// Create a model selector and use it
+	// create a model selector and use it
 	selector := NewModelSelector()
 
 	providerName, modelName, err := selector.SelectModel(cmd, cfg, args)
@@ -372,6 +389,27 @@ func selectModelForCommand(cmd *cobra.Command, cfg *config.Config, cmdName strin
 	}
 
 	return providerName, modelName, nil
+}
+
+// getExitMode determines which exit mode is active based on flags and command config
+func getExitMode(cmd *cobra.Command, cmdConfig *config.Command) string {
+	// check CLI flags first
+	if sentiment, _ := cmd.Flags().GetBool("sentiment"); sentiment {
+		return "sentiment"
+	}
+	if passFail, _ := cmd.Flags().GetBool("pass-fail"); passFail {
+		return "pass-fail"
+	}
+	if customMap, _ := cmd.Flags().GetString("exit-code"); customMap != "" {
+		return customMap
+	}
+
+	// if no flags are set, check the named command's configuration
+	if cmdConfig != nil && cmdConfig.ExitCodeMap != "" {
+		return cmdConfig.ExitCodeMap
+	}
+
+	return "" // no exit mode active
 }
 
 // handleNamedCommand handles execution of a named command
@@ -397,8 +435,11 @@ func handleNamedCommand(cmd *cobra.Command, cmdName string, cmdConfig config.Com
 		return fmt.Errorf("failed to process context: %w", err)
 	}
 
+	// get exit mode using command config (CLI flags take precedence)
+	exitMode := getExitMode(cmd, &cmdConfig)
+
 	// exec app with command context and command info display
-	return executeApp(cmd, args, workingConfig, contextResult, cmdConfig.Context, true, cmdName, cmdConfig.MessageTemplate)
+	return executeApp(cmd, args, workingConfig, contextResult, cmdConfig.Context, true, cmdName, cmdConfig.MessageTemplate, exitMode)
 }
 
 // createListCommand creates the list subcommand
