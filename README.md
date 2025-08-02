@@ -110,8 +110,7 @@ Chain multiple slop commands to orchestrate multi-stage solutions:
 
 ```bash
 sift https://www.drought.gov/national 
- pandoc -f html -t plain | \
- slop "Which States are most vulnerable to drought"| \
+ slop "Which states are most vulnerable to drought?"| \
  slop --context RFI-2025-05936.xml \
  "Which proposed data centers are in areas vulnerable to drought?"
 ```
@@ -257,23 +256,23 @@ To receive a structured response, add one of the following flags to your command
 
 Note that format flags are mutually exclusive.
 
-## 🔄 Workflow Exit Codes
+## 🔄 Exit Codes
 
-Slop can return structured exit codes based on LLM responses, enabling automation and routing in shell scripts and CI/CD pipelines. This makes slop a powerful building block for decision-making workflows.
+Structured exit codes can facilitate automation and routing in shell scripts.
 
 Exit codes allow you to branch logic based on AI analysis results. The `--sentiment` flag returns exit code 10 for positive responses, 11 for negative, and 12 for neutral. The `--pass-fail` flag returns 30 for pass and 31 for fail. When no pattern matches, slop exits with code 0, preserving composability with other tools.
 
 ```bash
-# Route based on sentiment analysis
-if slop --sentiment "The quarterly results exceeded expectations by 15%"; then
+# sentiment-based routing
+if slop --sentiment "Let's face it: our lives are miserable, laborious, and short!"; then
   case $? in
-    10) echo "Positive sentiment detected - sending to marketing team" ;;
-    11) echo "Negative sentiment detected - escalating to management" ;;
+    10) echo "Positive sentiment detected - escalating to propaganda team" ;;
+    11) echo "Negative sentiment detected - escalating to quality improvement team" ;;
     12) echo "Neutral sentiment - no action needed" ;;
   esac
 fi
 
-# Automated code review with pass/fail routing
+# code review with pass/fail routing
 slop --pass-fail --context main.py "Does this code follow security best practices?" 
 if [ $? -eq 30 ]; then
   echo "Code passed security review - proceeding with deployment"
@@ -283,6 +282,8 @@ else
   exit 1
 fi
 ```
+
+You can also define custom exit codes in your `config.TOML`
 
 ## ⚙️ Configuration
 

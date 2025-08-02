@@ -392,7 +392,7 @@ func TestDetermineCustomExitCode(t *testing.T) {
 		},
 		{
 			name:            "Bakery COOL step",
-			response:        "COOL for 20 minutes", //prefix
+			response:        "COOL for 20 minutes", // prefix
 			exitCodeMapName: "bakery",
 			expected:        102,
 		},

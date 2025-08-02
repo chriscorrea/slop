@@ -125,10 +125,8 @@ func (c *DefaultContextManager) processContextFile(path string, content string, 
 				Type:     "conversation",
 				Messages: messages,
 			}
-		} else {
-			if logger != nil {
-				logger.Debug("Context file has conversation extension but failed parsing, treating as text", "file", path, "error", err)
-			}
+		} else if logger != nil {
+			logger.Debug("Context file has conversation extension but failed parsing, treating as text", "file", path, "error", err)
 		}
 	}
 

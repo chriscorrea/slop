@@ -17,7 +17,7 @@ import (
 )
 
 // current version (hardcoded for now, could be replaced with build flags)
-const version = "0.1.0"
+const version = "0.1.3"
 
 // rootCmdState holds the config manager and logger for the command
 type rootCmdState struct {
