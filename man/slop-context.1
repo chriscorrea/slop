@@ -2,51 +2,20 @@
 .TH "SLOP" "1" "Jul 2025" "Slop CLI" ""
 
 .SH NAME
-slop-completion-bash - Generate the autocompletion script for bash
+slop-context - Manage persistent context for the current directory
 
 
 .SH SYNOPSIS
-\fBslop completion bash\fP
+\fBslop context [flags]\fP
 
 
 .SH DESCRIPTION
-Generate the autocompletion script for the bash shell.
-
-.PP
-This script depends on the 'bash-completion' package.
-If it is not installed already, you can install it via your OS's package manager.
-
-.PP
-To load completions in your current shell session:
-
-.EX
-source <(slop completion bash)
-.EE
-
-.PP
-To load completions for every new session, execute once:
-
-.SS Linux:
-.EX
-slop completion bash > /etc/bash_completion.d/slop
-.EE
-
-.SS macOS:
-.EX
-slop completion bash > $(brew --prefix)/etc/bash_completion.d/slop
-.EE
-
-.PP
-You will need to start a new shell for this setup to take effect.
+Manage persistent file context using .slop/context manifest files. Searches for manifest in current directory and parent directories.
 
 
 .SH OPTIONS
 \fB-h\fP, \fB--help\fP[=false]
-	help for bash
-
-.PP
-\fB--no-descriptions\fP[=false]
-	disable completion descriptions
+	help for context
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS
@@ -140,7 +109,7 @@ You will need to start a new shell for this setup to take effect.
 
 
 .SH SEE ALSO
-\fBslop-completion(1)\fP
+\fBslop(1)\fP, \fBslop-context-add(1)\fP, \fBslop-context-clear(1)\fP, \fBslop-context-list(1)\fP
 
 
 .SH HISTORY

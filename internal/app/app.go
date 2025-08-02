@@ -343,6 +343,14 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 	return cleanedResponse, exitCode, nil
 }
 
+// createFileMessage formats a file's content as a user message
+func createFileMessage(path, content string) common.Message {
+	return common.Message{
+		Role:    "user",
+		Content: fmt.Sprintf("File: %s\n\n%s", path, content),
+	}
+}
+
 // buildSyntheticMessageHistory creates a sequence of user messages from structured input
 func buildSyntheticMessageHistory(input *slopIO.StructuredInput, contextResult *slopContext.ContextResult, messageTemplate string) []common.Message {
 	var messages []common.Message
@@ -357,22 +365,14 @@ func buildSyntheticMessageHistory(input *slopIO.StructuredInput, contextResult *
 				messages = append(messages, item.Messages...)
 			case "file":
 				// wrap as user message with file header (existing behavior)
-				content := fmt.Sprintf("File: %s\n\n%s", item.Path, item.Content)
-				messages = append(messages, common.Message{
-					Role:    "user",
-					Content: content,
-				})
+				messages = append(messages, createFileMessage(item.Path, item.Content))
 			}
 		}
 	} else if input != nil {
 		// fallback to legacy context file processing for backward compatibility
 		for _, contextFile := range input.ContextFiles {
 			if contextFile.Content != "" {
-				content := fmt.Sprintf("File: %s\n\n%s", contextFile.Path, contextFile.Content)
-				messages = append(messages, common.Message{
-					Role:    "user",
-					Content: content,
-				})
+				messages = append(messages, createFileMessage(contextFile.Path, contextFile.Content))
 			}
 		}
 	}

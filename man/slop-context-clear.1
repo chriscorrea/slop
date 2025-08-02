@@ -2,51 +2,20 @@
 .TH "SLOP" "1" "Jul 2025" "Slop CLI" ""
 
 .SH NAME
-slop-completion-bash - Generate the autocompletion script for bash
+slop-context-clear - Remove all files from the current directory's context
 
 
 .SH SYNOPSIS
-\fBslop completion bash\fP
+\fBslop context clear [flags]\fP
 
 
 .SH DESCRIPTION
-Generate the autocompletion script for the bash shell.
-
-.PP
-This script depends on the 'bash-completion' package.
-If it is not installed already, you can install it via your OS's package manager.
-
-.PP
-To load completions in your current shell session:
-
-.EX
-source <(slop completion bash)
-.EE
-
-.PP
-To load completions for every new session, execute once:
-
-.SS Linux:
-.EX
-slop completion bash > /etc/bash_completion.d/slop
-.EE
-
-.SS macOS:
-.EX
-slop completion bash > $(brew --prefix)/etc/bash_completion.d/slop
-.EE
-
-.PP
-You will need to start a new shell for this setup to take effect.
+Clear all files from the context manifest found in current directory.
 
 
 .SH OPTIONS
 \fB-h\fP, \fB--help\fP[=false]
-	help for bash
-
-.PP
-\fB--no-descriptions\fP[=false]
-	disable completion descriptions
+	help for clear
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS
@@ -140,7 +109,7 @@ You will need to start a new shell for this setup to take effect.
 
 
 .SH SEE ALSO
-\fBslop-completion(1)\fP
+\fBslop-context(1)\fP
 
 
 .SH HISTORY
