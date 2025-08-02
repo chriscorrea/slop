@@ -103,7 +103,7 @@ var rootCmd = &cobra.Command{
 	Version:      version,
 	Short:        "A CLI tool for interacting with LLMs",
 	Long:         `Slop brings large language models to your command line. It is inspired by the idea that language models work best as composable language operators`,
-	SilenceUsage: true, // Don't show usage after errors
+	SilenceUsage: true, // don't show usage after errors
 
 	// accept any arguments and pass them to RunE
 	Args: cobra.ArbitraryArgs,
@@ -118,7 +118,7 @@ var rootCmd = &cobra.Command{
 		// instantiate the config manager with logger
 		state.manager = config.NewManager().WithLogger(state.logger)
 
-		// Get the config flag value
+		// get the config flag value
 		configPath, err := cmd.Flags().GetString("config")
 		if err != nil {
 			return fmt.Errorf("failed to get config flag: %w", err)
@@ -159,7 +159,7 @@ var rootCmd = &cobra.Command{
 			"max-retries":    "parameters.max_retries",
 			"timeout":        "parameters.timeout",
 			"test":           "test",
-			"exit-code-map":  "exit_code_map",
+			"exit-code":      "exit_code_map",
 		}
 
 		// bind each flag to corresponding Viper key
@@ -238,18 +238,16 @@ func init() {
 	rootCmd.PersistentFlags().Bool("md", false, "Format response as Markdown")
 	rootCmd.PersistentFlags().Bool("xml", false, "Format response as XML")
 
-	// Exit code flags for workflow automation
-	rootCmd.PersistentFlags().Bool("exit-sentiment", false, "Exit with code 10 (positive), 11 (negative), or 12 (neutral)")
-	rootCmd.PersistentFlags().Bool("sentiment", false, "Alias for --exit-sentiment")
-	rootCmd.PersistentFlags().Bool("exit-pass-fail", false, "Exit with code 30 (pass) or 31 (fail)")  
-	rootCmd.PersistentFlags().Bool("pass-fail", false, "Alias for --exit-pass-fail")
-	rootCmd.PersistentFlags().String("exit-code-map", "", "Apply a custom, user-defined exit code map from your config")
+	// exit code flags to facilitate automated workflows (mutually exclusive)
+	rootCmd.PersistentFlags().Bool("sentiment", false, "Exit with code 10 (positive), 11 (negative), or 12 (neutral)")
+	rootCmd.PersistentFlags().Bool("pass-fail", false, "Exit with code 30 (pass) or 31 (fail)")
+	rootCmd.PersistentFlags().String("exit-code", "", "Apply a custom exit code map from your config")
 
 	// mark the mutually exclusive flags
 	rootCmd.MarkFlagsMutuallyExclusive("fast", "deep")
 	rootCmd.MarkFlagsMutuallyExclusive("local", "remote")
 	rootCmd.MarkFlagsMutuallyExclusive("json", "jsonl", "yaml", "md", "xml")
-	rootCmd.MarkFlagsMutuallyExclusive("exit-sentiment", "sentiment", "exit-pass-fail", "pass-fail", "exit-code-map")
+	rootCmd.MarkFlagsMutuallyExclusive("sentiment", "pass-fail", "exit-code")
 
 	// list of flags to hide for now
 	flagsToHide := []string{"test", "stream"}
@@ -332,12 +330,12 @@ func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextRe
 	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), output)
-	
+
 	// exit with determined code if not 0
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
-	
+
 	return nil
 }
 
@@ -365,7 +363,7 @@ func handleDirectPrompt(cmd *cobra.Command, args []string) error {
 
 	// get exit mode for direct prompts (no command config)
 	exitMode := getExitMode(cmd, nil)
-	
+
 	// exec app with no command context, no command info display, no message template
 	return executeApp(cmd, args, cfg, contextResult, "", false, "", "", exitMode)
 }
@@ -373,7 +371,7 @@ func handleDirectPrompt(cmd *cobra.Command, args []string) error {
 // selectModelForCommand uses the existing model selector logic
 func selectModelForCommand(cmd *cobra.Command, cfg *config.Config, cmdName string, args []string) (string, string, error) {
 
-	// Create a model selector and use it
+	// create a model selector and use it
 	selector := NewModelSelector()
 
 	providerName, modelName, err := selector.SelectModel(cmd, cfg, args)
@@ -395,29 +393,23 @@ func selectModelForCommand(cmd *cobra.Command, cfg *config.Config, cmdName strin
 
 // getExitMode determines which exit mode is active based on flags and command config
 func getExitMode(cmd *cobra.Command, cmdConfig *config.Command) string {
-	// Check CLI flags first, as they have the highest precedence
-	if sentiment, _ := cmd.Flags().GetBool("exit-sentiment"); sentiment {
-		return "sentiment"
-	}
+	// check CLI flags first
 	if sentiment, _ := cmd.Flags().GetBool("sentiment"); sentiment {
 		return "sentiment"
-	}
-	if passFail, _ := cmd.Flags().GetBool("exit-pass-fail"); passFail {
-		return "pass-fail"
 	}
 	if passFail, _ := cmd.Flags().GetBool("pass-fail"); passFail {
 		return "pass-fail"
 	}
-	if customMap, _ := cmd.Flags().GetString("exit-code-map"); customMap != "" {
+	if customMap, _ := cmd.Flags().GetString("exit-code"); customMap != "" {
 		return customMap
 	}
 
-	// If no flags are set, check the named command's configuration
+	// if no flags are set, check the named command's configuration
 	if cmdConfig != nil && cmdConfig.ExitCodeMap != "" {
 		return cmdConfig.ExitCodeMap
 	}
 
-	return "" // No exit mode active
+	return "" // no exit mode active
 }
 
 // handleNamedCommand handles execution of a named command
@@ -445,7 +437,7 @@ func handleNamedCommand(cmd *cobra.Command, cmdName string, cmdConfig config.Com
 
 	// get exit mode using command config (CLI flags take precedence)
 	exitMode := getExitMode(cmd, &cmdConfig)
-	
+
 	// exec app with command context and command info display
 	return executeApp(cmd, args, workingConfig, contextResult, cmdConfig.Context, true, cmdName, cmdConfig.MessageTemplate, exitMode)
 }

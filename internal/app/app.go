@@ -188,7 +188,7 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 
 	// apply format instructions regardless of native structured output support
 	enhancedSystemPrompt := enhanceSystemPromptForFormat(a.cfg.Parameters.SystemPrompt, a.cfg.Format)
-	
+
 	// add exit code specific instructions for clearer responses
 	enhancedSystemPrompt = enhanceSystemPromptForExitCode(enhancedSystemPrompt, exitMode)
 
@@ -199,8 +199,8 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 		})
 	}
 
-	// build synthetic message history from structured input
-	messages = append(messages, buildSyntheticMessageHistory(structuredInput, messageTemplate)...)
+	// build synthetic message history from structured input and context result
+	messages = append(messages, buildSyntheticMessageHistory(structuredInput, contextResult, messageTemplate)...)
 
 	// if no messages created, return an error
 	if len(messages) == 0 {
@@ -211,6 +211,22 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 	if a.verbose {
 		outputCfg := verbose.DefaultOutputConfig(os.Stderr)
 		verbose.PrintLLMParameters(a.cfg, providerName, modelName, outputCfg)
+
+		// show context processing details
+		if contextResult != nil && len(contextResult.ProcessedItems) > 0 {
+			fmt.Fprintln(os.Stderr)
+			fmt.Fprintln(os.Stderr, "Context Processing:")
+			for _, item := range contextResult.ProcessedItems {
+				switch item.Type {
+				case "conversation":
+					fmt.Fprintf(os.Stderr, "  %s (conversation, %d messages)\n",
+						filepath.Base(item.Path), len(item.Messages))
+				case "file":
+					fmt.Fprintf(os.Stderr, "  %s (text file, %d chars)\n",
+						filepath.Base(item.Path), len(item.Content))
+				}
+			}
+		}
 	}
 
 	// log request parameters when debug is enabled
@@ -318,32 +334,50 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 		exitCode = determineSentimentExitCode(cleanedResponse)
 	case exitMode == "pass-fail":
 		exitCode = determinePassFailExitCode(cleanedResponse)
-	case exitMode != "": // Assumes this is a custom map name
+	case exitMode != "": // assume this is a custom map name
 		exitCode = a.determineCustomExitCode(cleanedResponse, exitMode)
 	default:
-		exitCode = 0 // No mode active
+		exitCode = 0 // no mode active
 	}
 
 	return cleanedResponse, exitCode, nil
 }
 
 // buildSyntheticMessageHistory creates a sequence of user messages from structured input
-func buildSyntheticMessageHistory(input *slopIO.StructuredInput, messageTemplate string) []common.Message {
+func buildSyntheticMessageHistory(input *slopIO.StructuredInput, contextResult *slopContext.ContextResult, messageTemplate string) []common.Message {
 	var messages []common.Message
 
-	// 1: each context file becomes a separate user message
-	for _, contextFile := range input.ContextFiles {
-		if contextFile.Content != "" {
-			// include file path information for better context?
-			content := fmt.Sprintf("File: %s\n\n%s", contextFile.Path, contextFile.Content)
-			messages = append(messages, common.Message{
-				Role:    "user",
-				Content: content,
-			})
+	// 1: process context items with smart conversation detection
+	if contextResult != nil && len(contextResult.ProcessedItems) > 0 {
+		// use the enhanced processed items that support conversations
+		for _, item := range contextResult.ProcessedItems {
+			switch item.Type {
+			case "conversation":
+				// append conversation messages directly (preserves roles)
+				messages = append(messages, item.Messages...)
+			case "file":
+				// wrap as user message with file header (existing behavior)
+				content := fmt.Sprintf("File: %s\n\n%s", item.Path, item.Content)
+				messages = append(messages, common.Message{
+					Role:    "user",
+					Content: content,
+				})
+			}
+		}
+	} else if input != nil {
+		// fallback to legacy context file processing for backward compatibility
+		for _, contextFile := range input.ContextFiles {
+			if contextFile.Content != "" {
+				content := fmt.Sprintf("File: %s\n\n%s", contextFile.Path, contextFile.Content)
+				messages = append(messages, common.Message{
+					Role:    "user",
+					Content: content,
+				})
+			}
 		}
 	}
 
-	// 2: stdin content becomes a user message (if present)
+	// 2:stdin content becomes a user message (if present)
 	if input.StdinContent != "" {
 		messages = append(messages, common.Message{
 			Role:    "user",

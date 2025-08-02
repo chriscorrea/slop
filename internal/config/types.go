@@ -2,12 +2,12 @@ package config
 
 // Config represents the complete configuration structure for slop
 type Config struct {
-	Parameters Parameters         `mapstructure:"parameters"`
-	Models     Models             `mapstructure:"models"`
-	Providers  Providers          `mapstructure:"providers"`
-	Commands   map[string]Command `mapstructure:"commands"`
+	Parameters Parameters             `mapstructure:"parameters"`
+	Models     Models                 `mapstructure:"models"`
+	Providers  Providers              `mapstructure:"providers"`
+	Commands   map[string]Command     `mapstructure:"commands"`
 	ExitCodes  map[string]ExitCodeMap `mapstructure:"exit_codes"`
-	Format     Format             `mapstructure:"format"`
+	Format     Format                 `mapstructure:"format"`
 }
 
 // Parameters contains default configuration values and model selection preferences
@@ -19,15 +19,15 @@ type Parameters struct {
 	TopP          float64  `mapstructure:"top_p"`
 	StopSequences []string `mapstructure:"stop_sequences"`
 	Stream        bool     `mapstructure:"stream"`
-	Seed          *int     `mapstructure:"seed"` // Random seed for deterministic outputs (nil = no seed)
+	Seed          *int     `mapstructure:"seed"`
 
 	// default model selection preferences
 	DefaultModelType string `mapstructure:"default_model_type"` // "fast" or "deep"
 	DefaultLocation  string `mapstructure:"default_location"`   // "local" or "remote"
 
 	// application behavior
-	Timeout    int `mapstructure:"timeout"`     // Timeout in seconds for requests
-	MaxRetries int `mapstructure:"max_retries"` // Maximum number of retry attempts for failed requests
+	Timeout    int `mapstructure:"timeout"`
+	MaxRetries int `mapstructure:"max_retries"`
 }
 
 // Format contains output formatting options
@@ -39,14 +39,14 @@ type Format struct {
 	XML   bool `mapstructure:"xml"`
 }
 
-// ExitCodeRule defines a pattern and exit code for a workflow
+// ExitCodeRule defines a pattern and exit code
 type ExitCodeRule struct {
 	MatchType string `mapstructure:"match_type"` // "exact", "contains", "regex", "prefix", "suffix"
 	Pattern   string `mapstructure:"pattern"`
 	ExitCode  int    `mapstructure:"exit_code"`
 }
 
-// ExitCodeMap is a named set of rules for determining a workflow exit code
+// ExitCodeMap is a named set of rules for determining an exit code
 type ExitCodeMap struct {
 	Description string         `mapstructure:"description"`
 	Rules       []ExitCodeRule `mapstructure:"rules"`
@@ -137,16 +137,16 @@ type Command struct {
 
 	ModelType string `toml:"model_type,omitempty"` // allows local-deep, etc
 
-	// Generation parameters
+	// generation params
 	Temperature *float64 `mapstructure:"temperature"`
 	MaxTokens   *int     `mapstructure:"max_tokens"`
 
-	// Context support - both direct and file-based
+	// context (supports both direct and file-based)
 	Context      string   `mapstructure:"context"`       // direct context string (supports multiline)
 	ContextFiles []string `mapstructure:"context_files"` // file paths to include
 
-	// Exit code configuration
-	ExitCodeMap string `mapstructure:"exit_code_map"` // name of exit code map to use
+	// exit code config
+	ExitCodeMap string `mapstructure:"exit_code_map"` // exit code map name
 }
 
 // ReservedCommands are command names that cannot be overridden by users

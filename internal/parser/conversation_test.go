@@ -12,9 +12,9 @@ func TestParseJSONHistory_Valid(t *testing.T) {
 		{"role": "assistant", "content": "Hi there!"},
 		{"role": "user", "content": "How are you?"}
 	]`
-	
+
 	messages, err := ParseJSONHistory([]byte(content))
-	
+
 	assert.NoError(t, err)
 	assert.Len(t, messages, 3)
 	assert.Equal(t, "user", messages[0].Role)
@@ -30,9 +30,9 @@ func TestParseJSONHistory_InvalidJSON(t *testing.T) {
 		{"role": "user", "content": "Hello",
 		{"role": "assistant", "content": "Hi there!"}
 	]`
-	
+
 	messages, err := ParseJSONHistory([]byte(content))
-	
+
 	assert.Error(t, err)
 	assert.Nil(t, messages)
 }
@@ -42,9 +42,9 @@ func TestParseJSONHistory_InvalidRole(t *testing.T) {
 		{"role": "user", "content": "Hello"},
 		{"role": "invalid", "content": "Bad role"}
 	]`
-	
+
 	messages, err := ParseJSONHistory([]byte(content))
-	
+
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid role 'invalid'")
 	assert.Nil(t, messages)
@@ -55,41 +55,41 @@ func TestParseJSONHistory_EmptyContent(t *testing.T) {
 		{"role": "user", "content": "Hello"},
 		{"role": "assistant", "content": ""}
 	]`
-	
+
 	messages, err := ParseJSONHistory([]byte(content))
-	
+
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "empty message content")
 	assert.Nil(t, messages)
 }
 
 func TestParseTextHistory_Valid(t *testing.T) {
-	content := `User: What is the capital of France?
-Assistant: The capital of France is Paris.
+	content := `User: What is the best pastry in all of France?
+Assistant: The best pastry in France is the croissant.
 User: What about Italy?
-Assistant: The capital of Italy is Rome.`
-	
+Assistant: The best pastry in Italy is the cannoli.`
+
 	messages, err := ParseTextHistory(content)
-	
+
 	assert.NoError(t, err)
 	assert.Len(t, messages, 4)
 	assert.Equal(t, "user", messages[0].Role)
-	assert.Equal(t, "What is the capital of France?", messages[0].Content)
+	assert.Equal(t, "What is the best pastry in all of France?", messages[0].Content)
 	assert.Equal(t, "assistant", messages[1].Role)
-	assert.Equal(t, "The capital of France is Paris.", messages[1].Content)
+	assert.Equal(t, "The best pastry in France is the croissant.", messages[1].Content)
 	assert.Equal(t, "user", messages[2].Role)
 	assert.Equal(t, "What about Italy?", messages[2].Content)
 	assert.Equal(t, "assistant", messages[3].Role)
-	assert.Equal(t, "The capital of Italy is Rome.", messages[3].Content)
+	assert.Equal(t, "The best pastry in Italy is the cannoli.", messages[3].Content)
 }
 
 func TestParseTextHistory_MarkdownFormat(t *testing.T) {
 	content := `**User:** What is 2 + 2?
 **Assistant:** 2 + 2 equals 4.
 **User:** Thanks!`
-	
+
 	messages, err := ParseTextHistory(content)
-	
+
 	assert.NoError(t, err)
 	assert.Len(t, messages, 3)
 	assert.Equal(t, "user", messages[0].Role)
@@ -104,21 +104,21 @@ func TestParseTextHistory_MultilineContent(t *testing.T) {
 	content := `User: Can you write a haiku?
 Assistant: Here's a haiku for you:
 
-Code flows like water
-Functions dance in harmony
-Bugs hide in shadows
+sweet roots nestled deep
+cinnamon whispers, softly
+memories rising
 
 User: Beautiful, thanks!`
-	
+
 	messages, err := ParseTextHistory(content)
-	
+
 	assert.NoError(t, err)
 	assert.Len(t, messages, 3)
 	assert.Equal(t, "user", messages[0].Role)
 	assert.Equal(t, "Can you write a haiku?", messages[0].Content)
 	assert.Equal(t, "assistant", messages[1].Role)
 	assert.Contains(t, messages[1].Content, "Here's a haiku for you:")
-	assert.Contains(t, messages[1].Content, "Code flows like water")
+	assert.Contains(t, messages[1].Content, "cinnamon whispers")
 	assert.Equal(t, "user", messages[2].Role)
 	assert.Equal(t, "Beautiful, thanks!", messages[2].Content)
 }
@@ -127,9 +127,9 @@ func TestParseTextHistory_CaseInsensitive(t *testing.T) {
 	content := `user: lowercase user
 ASSISTANT: uppercase assistant
 User: mixed case user`
-	
+
 	messages, err := ParseTextHistory(content)
-	
+
 	assert.NoError(t, err)
 	assert.Len(t, messages, 3)
 	assert.Equal(t, "user", messages[0].Role)
@@ -141,11 +141,11 @@ User: mixed case user`
 }
 
 func TestParseTextHistory_NoMatches(t *testing.T) {
-	content := `This is just regular text without conversation patterns.
+	content := `This is just regular content without conversation patterns.
 It should not be parsed as a conversation.`
-	
+
 	messages, err := ParseTextHistory(content)
-	
+
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no conversation messages found")
 	assert.Nil(t, messages)
@@ -153,9 +153,9 @@ It should not be parsed as a conversation.`
 
 func TestParseTextHistory_EmptyInput(t *testing.T) {
 	content := ``
-	
+
 	messages, err := ParseTextHistory(content)
-	
+
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no conversation messages found")
 	assert.Nil(t, messages)
@@ -175,7 +175,7 @@ func TestIsConversationFile(t *testing.T) {
 		{"regular.md", false},
 		{"", false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.filename, func(t *testing.T) {
 			result := IsConversationFile(tt.filename)

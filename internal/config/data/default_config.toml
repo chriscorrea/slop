@@ -71,14 +71,6 @@ xml = false
 # Exit code maps for workflow automation
 [exit_codes]
 
-  [exit_codes.sentiment_custom]
-    description = "A custom map for sentiment. Note: --exit-sentiment flag is preferred."
-    rules = [
-      { match_type = "exact", pattern = "POSITIVE", exit_code = 10 },
-      { match_type = "exact", pattern = "NEGATIVE", exit_code = 11 },
-      { match_type = "exact", pattern = "NEUTRAL",  exit_code = 12 },
-    ]
-
   [exit_codes.approval]
     description = "Exits based on a three-stage approval status."
     rules = [

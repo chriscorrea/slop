@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
 	slopContext "github.com/chriscorrea/slop/internal/context"
 	"github.com/chriscorrea/slop/internal/manifest"
+	"github.com/chriscorrea/slop/internal/parser"
 
 	"github.com/spf13/cobra"
 )
@@ -55,9 +57,14 @@ func (c *DefaultContextManager) ProcessContextWithFlags(cmd *cobra.Command, addi
 
 	// read content from CLI and command context files for structured processing
 	contextFileContents := make([]slopContext.ContextFile, 0, len(allContextFiles)+len(projectContextFiles))
+	processedItems := make([]slopContext.ContextItem, 0, len(allContextFiles)+len(projectContextFiles))
 
 	// add project context files first (they come before CLI context files)
 	contextFileContents = append(contextFileContents, projectContextFiles...)
+	for _, contextFile := range projectContextFiles {
+		processedItem := c.processContextFile(contextFile.Path, contextFile.Content, state.logger)
+		processedItems = append(processedItems, processedItem)
+	}
 
 	// then add CLI and command context files
 	for _, filePath := range allContextFiles {
@@ -77,6 +84,10 @@ func (c *DefaultContextManager) ProcessContextWithFlags(cmd *cobra.Command, addi
 				Path:    filePath,
 				Content: fileContent,
 			})
+
+			// process with smart detection (for conversations vs other files)
+			processedItem := c.processContextFile(filePath, fileContent, state.logger)
+			processedItems = append(processedItems, processedItem)
 		}
 	}
 
@@ -85,5 +96,49 @@ func (c *DefaultContextManager) ProcessContextWithFlags(cmd *cobra.Command, addi
 		CLIContextFiles:     cliContextFiles,
 		CmdContextFiles:     additionalContextFiles,
 		ContextFileContents: contextFileContents,
+		ProcessedItems:      processedItems,
 	}, nil
+}
+
+// processContextFile intelligently processes a context file, detecting conversations vs regular files
+func (c *DefaultContextManager) processContextFile(path string, content string, logger *slog.Logger) slopContext.ContextItem {
+	// try JSON parsing first
+	if messages, err := parser.ParseJSONHistory([]byte(content)); err == nil {
+		if logger != nil {
+			logger.Debug("Context file detected as JSON conversation", "file", path, "messages", len(messages))
+		}
+		return slopContext.ContextItem{
+			Path:     path,
+			Type:     "conversation",
+			Messages: messages,
+		}
+	}
+
+	// try extension-based detection
+	if parser.IsConversationFile(path) {
+		if messages, err := parser.ParseTextHistory(content); err == nil {
+			if logger != nil {
+				logger.Debug("Context file detected as text conversation", "file", path, "messages", len(messages))
+			}
+			return slopContext.ContextItem{
+				Path:     path,
+				Type:     "conversation",
+				Messages: messages,
+			}
+		} else {
+			if logger != nil {
+				logger.Debug("Context file has conversation extension but failed parsing, treating as text", "file", path, "error", err)
+			}
+		}
+	}
+
+	// fallback to regular file
+	if logger != nil {
+		logger.Debug("Context file treated as regular text", "file", path, "content_length", len(content))
+	}
+	return slopContext.ContextItem{
+		Path:    path,
+		Type:    "file",
+		Content: content,
+	}
 }

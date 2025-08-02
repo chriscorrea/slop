@@ -406,7 +406,7 @@ func TestBuildSyntheticMessageHistory_WithStdin(t *testing.T) {
 	}
 
 	// build synthetic message history
-	messages := buildSyntheticMessageHistory(input, "")
+	messages := buildSyntheticMessageHistory(input, nil, "")
 
 	// verify correct order: context files, stdin, command context, CLI args
 	assert.Len(t, messages, 4)
@@ -442,7 +442,7 @@ func TestBuildSyntheticMessageHistory_AllMessageTypes(t *testing.T) {
 	}
 
 	// build synthetic message history
-	messages := buildSyntheticMessageHistory(input, "")
+	messages := buildSyntheticMessageHistory(input, nil, "")
 
 	// verify correct order and count: 2 context files + stdin + command context + CLI args = 5 messages
 	assert.Len(t, messages, 5)
@@ -692,7 +692,7 @@ func TestBuildSyntheticMessageHistory_WithMessageTemplate(t *testing.T) {
 			}
 
 			// build synthetic message history with template
-			messages := buildSyntheticMessageHistory(input, tt.messageTemplate)
+			messages := buildSyntheticMessageHistory(input, nil, tt.messageTemplate)
 
 			if tt.expectedContent == "" {
 				// if expected content is empty, we should have no messages

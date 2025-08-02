@@ -12,11 +12,11 @@ import (
 var (
 	// userPattern matches "User: content" or "**User:** content"
 	userPattern = regexp.MustCompile(`^(?:(?i:user):\s*|\*\*(?i:user):\*\*\s*)(.*)$`)
-	// assistantPattern matches "Assistant: content" or "**Assistant:** content"  
+	// assistantPattern matches "Assistant: content" or "**Assistant:** content"
 	assistantPattern = regexp.MustCompile(`^(?:(?i:assistant):\s*|\*\*(?i:assistant):\*\*\s*)(.*)$`)
 )
 
-// ParseJSONHistory attempts to parse content as a JSON array of messages
+// ParseJSONHistory attempts to parse as a JSON array of messages
 func ParseJSONHistory(content []byte) ([]common.Message, error) {
 	var messages []common.Message
 	if err := json.Unmarshal(content, &messages); err != nil {
@@ -37,7 +37,7 @@ func ParseJSONHistory(content []byte) ([]common.Message, error) {
 }
 
 // ParseTextHistory attempts to parse text content as a conversation
-// Supports formats like "User: message" and "Assistant: message"
+// supports formats like "User: message" and "Assistant: message"
 func ParseTextHistory(content string) ([]common.Message, error) {
 	var messages []common.Message
 	lines := strings.Split(content, "\n")

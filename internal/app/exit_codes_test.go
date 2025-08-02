@@ -346,6 +346,23 @@ func TestDetermineCustomExitCode(t *testing.T) {
 					{MatchType: "exact", Pattern: "fallback", ExitCode: 401},
 				},
 			},
+			// Default config examples - these match the actual default_config.toml
+			"approval": {
+				Description: "Exits based on a three-stage approval status.",
+				Rules: []config.ExitCodeRule{
+					{MatchType: "contains", Pattern: "APPROVED", ExitCode: 20},
+					{MatchType: "contains", Pattern: "REJECTED", ExitCode: 21},
+					{MatchType: "contains", Pattern: "NEEDS_REVIEW", ExitCode: 22},
+				},
+			},
+			"priority": {
+				Description: "Exit codes based on priority levels.",
+				Rules: []config.ExitCodeRule{
+					{MatchType: "regex", Pattern: "(?i)\\b(urgent|critical|high)\\b", ExitCode: 30},
+					{MatchType: "regex", Pattern: "(?i)\\b(medium|normal)\\b", ExitCode: 31},
+					{MatchType: "regex", Pattern: "(?i)\\b(low|minor)\\b", ExitCode: 32},
+				},
+			},
 		},
 	}
 
@@ -422,6 +439,82 @@ func TestDetermineCustomExitCode(t *testing.T) {
 			name:            "Non-existent map",
 			response:        "MIX",
 			exitCodeMapName: "non_existent",
+			expected:        0,
+		},
+
+		// Default config examples verification
+		{
+			name:            "Approval APPROVED",
+			response:        "The deployment has been APPROVED for production",
+			exitCodeMapName: "approval",
+			expected:        20,
+		},
+		{
+			name:            "Approval REJECTED",
+			response:        "Request REJECTED due to security concerns",
+			exitCodeMapName: "approval",
+			expected:        21,
+		},
+		{
+			name:            "Approval NEEDS_REVIEW",
+			response:        "Code NEEDS_REVIEW before deployment",
+			exitCodeMapName: "approval",
+			expected:        22,
+		},
+		{
+			name:            "Approval no match",
+			response:        "Status is pending further analysis",
+			exitCodeMapName: "approval",
+			expected:        0,
+		},
+
+		// Priority level tests
+		{
+			name:            "Priority urgent",
+			response:        "This is an urgent security vulnerability",
+			exitCodeMapName: "priority",
+			expected:        30,
+		},
+		{
+			name:            "Priority critical case insensitive",
+			response:        "CRITICAL system failure detected",
+			exitCodeMapName: "priority",
+			expected:        30,
+		},
+		{
+			name:            "Priority high",
+			response:        "High priority bug needs immediate attention",
+			exitCodeMapName: "priority",
+			expected:        30,
+		},
+		{
+			name:            "Priority medium",
+			response:        "This has medium priority for next sprint",
+			exitCodeMapName: "priority",
+			expected:        31,
+		},
+		{
+			name:            "Priority normal",
+			response:        "Normal maintenance task",
+			exitCodeMapName: "priority",
+			expected:        31,
+		},
+		{
+			name:            "Priority low",
+			response:        "Low priority enhancement request",
+			exitCodeMapName: "priority",
+			expected:        32,
+		},
+		{
+			name:            "Priority minor",
+			response:        "Minor documentation update needed",
+			exitCodeMapName: "priority",
+			expected:        32,
+		},
+		{
+			name:            "Priority no match",
+			response:        "Status unknown at this time",
+			exitCodeMapName: "priority",
 			expected:        0,
 		},
 	}
