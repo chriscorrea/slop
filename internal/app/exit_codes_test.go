@@ -319,7 +319,7 @@ func TestEnhanceSystemPromptForExitCode(t *testing.T) {
 
 func TestDetermineCustomExitCode(t *testing.T) {
 	// create mock app with logger and config
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	// define test exit code maps
 	testConfig := &config.Config{
