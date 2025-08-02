@@ -193,9 +193,8 @@ system_prompt = """You are an expert Python programmer.
   Analyze the provided code and deliver a review with a focus on security, performance, and maintainability."""
 
 message_template = """Please review this code: 
-```
 {input}
-```
+
 List actionable and constructive suggestions and conclude with a improved code snippet."""
 
 model_type = "deep"
