@@ -7,7 +7,6 @@
 //   client := anthropic.NewClient(apiKey)
 //   response, err := client.Generate(ctx, messages, anthropic.WithTemperature(0.7))
 //
-// Anthropic models include: claude-3-5-haiku-latest, claude-sonnet-4-0, claude-opus-4-0
 
 package anthropic
 
