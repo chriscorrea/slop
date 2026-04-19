@@ -12,6 +12,9 @@ type GenerateOptions struct {
 	Seed             *int        // Integer seed for deterministic outputs
 	Tools            []Tool      // Function calling tools
 	ToolChoice       interface{} // "none", "auto", or specific tool choice
+	// ReasoningEffort is the translated thinking level used by reasoning-capable
+	// OpenAI models. Values are typically "medium" or "high"; nil means unset
+	ReasoningEffort *string
 }
 
 // GenerateOption configures OpenAI-specific generation parameters
@@ -58,6 +61,17 @@ func WithTools(tools []Tool) GenerateOption {
 func WithToolChoice(choice interface{}) GenerateOption {
 	return func(c *GenerateOptions) {
 		c.ToolChoice = choice
+	}
+}
+
+// WithReasoningEffort sets OpenAI's reasoning_effort parameter for thinking-capable
+// models. Callers typically pass "medium" or "high". Empty string is ignored.
+func WithReasoningEffort(effort string) GenerateOption {
+	return func(c *GenerateOptions) {
+		if effort == "" {
+			return
+		}
+		c.ReasoningEffort = &effort
 	}
 }
 
