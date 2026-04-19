@@ -1,6 +1,7 @@
 package mistral
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"testing"
@@ -315,6 +316,131 @@ func TestHandleError(t *testing.T) {
 		})
 	}
 }
+
+func TestSupportsReasoningEffort(t *testing.T) {
+	tests := []struct {
+		name    string
+		modelID string
+		want    bool
+	}{
+		{"mistral-small-2603 baseline", "mistral-small-2603", true},
+		{"mistral-small newer date", "mistral-small-2610", true},
+		{"mistral-small older than cutoff", "mistral-small-2509", false},
+		{"mistral-small with suffix", "mistral-small-2603-preview", true},
+		{"magistral-medium", "magistral-medium-2509", false},
+		{"mistral-medium legacy", "mistral-medium-2312", false},
+		{"mistral-tiny", "mistral-tiny", false},
+		{"empty string", "", false},
+		{"uppercase still matches", "Mistral-Small-2603", true},
+		{"no date suffix", "mistral-small-latest", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := supportsReasoningEffort(tt.modelID)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestBuildRequest_ReasoningEffort(t *testing.T) {
+	provider := New()
+	messages := []common.Message{{Role: "user", Content: "four legs good, two legs bad"}}
+
+	tests := []struct {
+		name           string
+		modelName      string
+		effort         *string
+		wantWired      bool
+		wantEffortText string
+	}{
+		{
+			name:           "mistral-small-2603 wires high effort",
+			modelName:      "mistral-small-2603",
+			effort:         strPtr("high"),
+			wantWired:      true,
+			wantEffortText: "high",
+		},
+		{
+			name:      "magistral-medium-2509 drops effort",
+			modelName: "magistral-medium-2509",
+			effort:    strPtr("high"),
+			wantWired: false,
+		},
+		{
+			name:      "mistral-tiny drops effort",
+			modelName: "mistral-tiny",
+			effort:    strPtr("medium"),
+			wantWired: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &GenerateOptions{ReasoningEffort: tt.effort}
+			req, err := provider.BuildRequest(messages, tt.modelName, opts, slog.Default())
+			assert.NoError(t, err)
+
+			chatReq, ok := req.(*ChatRequest)
+			assert.True(t, ok, "Request should be *ChatRequest")
+
+			if tt.wantWired {
+				assert.NotNil(t, chatReq.ReasoningEffort)
+				assert.Equal(t, tt.wantEffortText, *chatReq.ReasoningEffort)
+			} else {
+				assert.Nil(t, chatReq.ReasoningEffort, "ReasoningEffort must not be sent for unsupported models")
+			}
+		})
+	}
+}
+
+func TestBuildRequest_SchemaEnvelope(t *testing.T) {
+	provider := New()
+	messages := []common.Message{{Role: "user", Content: "Boxer builds the windmill"}}
+	schema := []byte(`{"type":"object","properties":{"character":{"type":"string"}},"required":["character"]}`)
+
+	commonOpts := common.NewGenerateOptions(common.WithSchema("snowball_schema", schema))
+	opts := &GenerateOptions{GenerateOptions: *commonOpts}
+
+	req, err := provider.BuildRequest(messages, "mistral-small-2603", opts, slog.Default())
+	assert.NoError(t, err)
+
+	chatReq, ok := req.(*ChatRequest)
+	assert.True(t, ok, "Request should be *ChatRequest")
+
+	assert.NotNil(t, chatReq.ResponseFormat)
+	assert.Equal(t, "json_schema", chatReq.ResponseFormat.Type)
+	assert.NotNil(t, chatReq.ResponseFormat.JSONSchema, "json_schema envelope must be populated")
+	assert.Equal(t, "snowball_schema", chatReq.ResponseFormat.JSONSchema.Name)
+	assert.NotNil(t, chatReq.ResponseFormat.JSONSchema.Strict)
+	assert.True(t, *chatReq.ResponseFormat.JSONSchema.Strict)
+	assert.JSONEq(t, string(schema), string(chatReq.ResponseFormat.JSONSchema.Schema))
+
+	// confirm the on-wire shape nests schema under json_schema, matching
+	// Mistral's OpenAI-compatible envelope
+	wire, err := json.Marshal(chatReq.ResponseFormat)
+	assert.NoError(t, err)
+	var decoded map[string]interface{}
+	assert.NoError(t, json.Unmarshal(wire, &decoded))
+	assert.Equal(t, "json_schema", decoded["type"])
+	nested, ok := decoded["json_schema"].(map[string]interface{})
+	assert.True(t, ok, "json_schema must be a nested object")
+	assert.Equal(t, "snowball_schema", nested["name"])
+	assert.Equal(t, true, nested["strict"])
+	assert.NotNil(t, nested["schema"])
+}
+
+// TestExtractMagistralThinking_Placeholder exercises the current
+// pass-through behavior. Replace this test once the live Magistral API
+// response format has been verified and real extraction is implemented.
+func TestExtractMagistralThinking_Placeholder(t *testing.T) {
+	input := "Snowball drafts plans for the windmill before explaining the blueprint."
+	thinking, cleaned := extractMagistralThinking(input)
+	assert.Equal(t, "", thinking, "placeholder must return empty thinking until live verification")
+	assert.Equal(t, input, cleaned, "placeholder must pass content through unchanged")
+}
+
+func strPtr(s string) *string { return &s }
 
 func TestProviderInterface(t *testing.T) {
 	provider := New()

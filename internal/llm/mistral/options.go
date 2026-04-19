@@ -7,7 +7,8 @@ type GenerateOptions struct {
 	common.GenerateOptions
 
 	// Mistral-specific params
-	RandomSeed *int // mistral uses "random_seed" instead of "seed"
+	RandomSeed      *int    // mistral uses "random_seed" instead of "seed"
+	ReasoningEffort *string // mistral's native reasoning_effort field (e.g. "medium", "high")
 }
 
 // GenerateOption configures Mistral-specific generation parameters
@@ -26,6 +27,18 @@ func NewGenerateOptions(opts ...GenerateOption) *GenerateOptions {
 func WithRandomSeed(seed int) GenerateOption {
 	return func(c *GenerateOptions) {
 		c.RandomSeed = &seed
+	}
+}
+
+// WithReasoningEffort sets Mistral's native reasoning_effort field.
+// Valid upstream values include "medium" and "high". An empty string
+// leaves the field unset so callers can no-op without conditional logic.
+func WithReasoningEffort(effort string) GenerateOption {
+	return func(c *GenerateOptions) {
+		if effort == "" {
+			return
+		}
+		c.ReasoningEffort = &effort
 	}
 }
 
