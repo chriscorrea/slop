@@ -152,10 +152,27 @@ func (m *Manager) Load(configPath string) error {
 		return fmt.Errorf("invalid command configuration: %w", err)
 	}
 
+	// validate thinking enum — reject unknown values at load time with a
+	// clear message rather than at request time
+	if err := m.validateThinking(); err != nil {
+		return err
+	}
+
 	// post-process configuration to handle special cases
 	m.postProcessConfig()
 
 	return nil
+}
+
+// validateThinking rejects unknown values for parameters.thinking so the
+// user sees a clear error at load time instead of a silent no-op later.
+func (m *Manager) validateThinking() error {
+	switch m.cfg.Parameters.Thinking {
+	case "", "off", "medium", "high":
+		return nil
+	default:
+		return fmt.Errorf("invalid parameters.thinking %q: expected off|medium|high", m.cfg.Parameters.Thinking)
+	}
 }
 
 // config returns the current configuration

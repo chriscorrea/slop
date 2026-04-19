@@ -13,6 +13,10 @@ type ChatRequest struct {
 
 	// Structured output support
 	Format string `json:"format,omitempty"`
+
+	// Think enables Ollama's native thinking mode for reasoning models
+	// this is pointer so unset (nil) omits the field (rather than sending false)
+	Think *bool `json:"think,omitempty"`
 }
 
 // ChatResponse represents the response from Ollama's chat API

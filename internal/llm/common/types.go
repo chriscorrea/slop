@@ -17,10 +17,12 @@ type Choice struct {
 	FinishReason string  `json:"finish_reason"`
 }
 
-// Message represents a message in a conversation
+// Message represents a message in a conversation.
+// note: thinking carries reasoning traces (separate from content)
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role     string `json:"role"`
+	Content  string `json:"content"`
+	Thinking string `json:"thinking,omitempty"`
 }
 
 // Usage represents token usage information

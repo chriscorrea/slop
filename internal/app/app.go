@@ -158,7 +158,7 @@ func getSpinner(providerName, modelName string) (glyphs []string, speed int) {
 }
 
 // Run executes the main application logic
-func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopContext.ContextResult, commandContext, providerName, modelName, messageTemplate, exitMode string) (string, int, error) {
+func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopContext.ContextResult, commandContext, providerName, modelName, messageTemplate, exitMode string, hideThinking, showThinking bool) (string, int, error) {
 	if a.cfg == nil {
 		return "", 0, fmt.Errorf("configuration is nil")
 	}
@@ -324,8 +324,14 @@ func (a *App) Run(ctx context.Context, cliArgs []string, contextResult *slopCont
 		return "", 0, fmt.Errorf("failed to generate response: %w", err)
 	}
 
+	// apply thinking filter to raw response before format cleaning
+	thinkingFilteredResponse, err := a.applyThinkingFilter(response, hideThinking, showThinking)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to apply thinking filter: %w", err)
+	}
+
 	// clean the response based on format requirements
-	cleanedResponse := cleanFormattedResponse(response, a.cfg.Format)
+	cleanedResponse := cleanFormattedResponse(thinkingFilteredResponse, a.cfg.Format)
 
 	// determine exit code based on exit mode
 	var exitCode int
@@ -406,4 +412,15 @@ func buildSyntheticMessageHistory(input *slopIO.StructuredInput, contextResult *
 	}
 
 	return messages
+}
+
+// applyThinkingFilter applies thinking content filtering based on provided flags
+func (a *App) applyThinkingFilter(response string, hideThinking, showThinking bool) (string, error) {
+	// Apply thinking filter using the format package
+	filteredResponse, err := format.ApplyThinkingFilter(response, hideThinking, showThinking)
+	if err != nil {
+		return "", err
+	}
+
+	return filteredResponse, nil
 }
