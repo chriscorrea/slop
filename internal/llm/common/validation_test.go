@@ -57,6 +57,67 @@ func TestValidateJSONResponse(t *testing.T) {
 	}
 }
 
+func TestValidateJSONSchema(t *testing.T) {
+	windmillSchema := `{
+		"type": "object",
+		"properties": {
+			"character": {"type": "string"},
+			"quote": {"type": "string"}
+		},
+		"required": ["character", "quote"]
+	}`
+
+	tests := []struct {
+		name        string
+		schema      string
+		expectError bool
+		errorText   string
+	}{
+		{
+			name:        "Empty schema is allowed",
+			schema:      "",
+			expectError: false,
+		},
+		{
+			name:        "Valid object schema",
+			schema:      windmillSchema,
+			expectError: false,
+		},
+		{
+			name:        "Valid array JSON",
+			schema:      `[1, 2, 3]`,
+			expectError: false,
+		},
+		{
+			name:        "Unbalanced braces",
+			schema:      `{"type": "object"`,
+			expectError: true,
+			errorText:   "invalid JSON schema",
+		},
+		{
+			name:        "Garbage input",
+			schema:      `definitely-not-json`,
+			expectError: true,
+			errorText:   "invalid JSON schema",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateJSONSchema([]byte(tt.schema))
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("expected error but got nil")
+				} else if !strings.Contains(err.Error(), tt.errorText) {
+					t.Errorf("expected error containing %q, got %q", tt.errorText, err.Error())
+				}
+			} else if err != nil {
+				t.Errorf("expected no error but got: %v", err)
+			}
+		})
+	}
+}
+
 func TestIsJSONFormatRequested(t *testing.T) {
 	tests := []struct {
 		name     string

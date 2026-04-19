@@ -940,3 +940,95 @@ temperature = 0.8`, tt.seedValue)
 		})
 	}
 }
+
+// TestResolveResponseSchema covers the file / inline json schema resolution
+func TestResolveResponseSchema(t *testing.T) {
+	animalFarmSchema := `{"type":"object","properties":{"character":{"type":"string"},"quote":{"type":"string"}}}`
+
+	tmpDir := t.TempDir()
+	validSchemaPath := filepath.Join(tmpDir, "animal_farm.json")
+	if err := os.WriteFile(validSchemaPath, []byte(animalFarmSchema), 0644); err != nil {
+		t.Fatalf("failed to write schema file: %v", err)
+	}
+	malformedSchemaPath := filepath.Join(tmpDir, "malformed.json")
+	if err := os.WriteFile(malformedSchemaPath, []byte(`{"type": `), 0644); err != nil {
+		t.Fatalf("failed to write malformed schema file: %v", err)
+	}
+
+	tests := []struct {
+		name         string
+		raw          string
+		wantErr      bool
+		errContains  string
+		wantResolved string
+	}{
+		{
+			name:         "Empty value is a no-op",
+			raw:          "",
+			wantErr:      false,
+			wantResolved: "",
+		},
+		{
+			name:         "Inline JSON object passes through unchanged",
+			raw:          animalFarmSchema,
+			wantErr:      false,
+			wantResolved: animalFarmSchema,
+		},
+		{
+			name:         "Inline JSON array",
+			raw:          `[1,2,3]`,
+			wantErr:      false,
+			wantResolved: `[1,2,3]`,
+		},
+		{
+			name:         "File path is read and validated",
+			raw:          validSchemaPath,
+			wantErr:      false,
+			wantResolved: animalFarmSchema,
+		},
+		{
+			name:        "Missing file surfaces a clear error",
+			raw:         filepath.Join(tmpDir, "ofc_this_isnt_here.json"),
+			wantErr:     true,
+			errContains: "failed to read schema file",
+		},
+		{
+			name:        "Malformed inline JSON is rejected at load time",
+			raw:         `{"type": `,
+			wantErr:     true,
+			errContains: "invalid JSON schema",
+		},
+		{
+			name:        "Malformed file content is rejected at load time",
+			raw:         malformedSchemaPath,
+			wantErr:     true,
+			errContains: "invalid JSON schema",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Manager{
+				cfg: &Config{
+					Parameters: Parameters{ResponseSchema: tt.raw},
+				},
+			}
+			err := m.resolveResponseSchema()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("expected error to contain %q, got %q", tt.errContains, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if m.cfg.Parameters.ResponseSchema != tt.wantResolved {
+				t.Errorf("expected resolved %q, got %q", tt.wantResolved, m.cfg.Parameters.ResponseSchema)
+			}
+		})
+	}
+}

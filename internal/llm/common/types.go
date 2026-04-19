@@ -1,5 +1,7 @@
 package common
 
+import "encoding/json"
+
 // ChatResponse represents a standard chat completion response
 type ChatResponse struct {
 	ID      string   `json:"id"`
@@ -45,7 +47,11 @@ type ErrorDetail struct {
 	Code    string `json:"code,omitempty"`
 }
 
-// ResponseFormat specifies output format for structured responses
+// ResponseFormat specifies output format for structured responses.
+// Type carries the format tag providers recognize (e.g. "json_object")
 type ResponseFormat struct {
-	Type string `json:"type"`
+	Type   string          `json:"type"`
+	Schema json.RawMessage `json:"schema,omitempty"`
+	Name   string          `json:"name,omitempty"`
+	Strict *bool           `json:"strict,omitempty"`
 }

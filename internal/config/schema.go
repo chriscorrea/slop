@@ -47,6 +47,26 @@ func validateIntRange(min, max int) func(interface{}) error {
 	}
 }
 
+// validateEnum returns a validation function that accepts only the listed strings
+// (and empty string is "use default"). See parameters.thinking for example
+func validateEnum(allowed ...string) func(interface{}) error {
+	return func(value interface{}) error {
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("expected string, got %T", value)
+		}
+		if v == "" {
+			return nil
+		}
+		for _, a := range allowed {
+			if v == a {
+				return nil
+			}
+		}
+		return fmt.Errorf("value must be one of %v, got %q", allowed, v)
+	}
+}
+
 // validateOptionalInt returns a validation function for optional int values (can be nil)
 func validateOptionalInt() func(interface{}) error {
 	return func(value interface{}) error {
@@ -120,6 +140,17 @@ func DefaultConfigSchema() *ConfigSchema {
 				Type:        reflect.TypeOf(""),
 				Description: "Default model location preference (local/remote)",
 				Default:     "remote",
+			},
+			"parameters.thinking": {
+				Type:        reflect.TypeOf(""),
+				Description: "Requested reasoning effort (off/medium/high)",
+				Default:     "off",
+				Validation:  validateEnum("off", "medium", "high"),
+			},
+			"parameters.response_schema": {
+				Type:        reflect.TypeOf(""),
+				Description: "JSON schema for structured output (file path or inline JSON)",
+				Default:     "",
 			},
 
 			// Provider API Keys
@@ -253,6 +284,10 @@ func DefaultConfigSchema() *ConfigSchema {
 			"default-model-type": "parameters.default_model_type",
 			"default-location":   "parameters.default_location",
 			"seed":               "parameters.seed",
+			"thinking":           "parameters.thinking",
+			"reasoning":          "parameters.thinking",
+			"schema":             "parameters.response_schema",
+			"response-schema":    "parameters.response_schema",
 
 			// provider api key aliases
 			"anthropic-key": "providers.anthropic.api_key",
