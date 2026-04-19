@@ -1,6 +1,10 @@
 package cohere
 
-import "github.com/chriscorrea/slop/internal/llm/common"
+import (
+	"encoding/json"
+
+	"github.com/chriscorrea/slop/internal/llm/common"
+)
 
 // ChatRequest represents the request payload for Cohere's chat API
 type ChatRequest struct {
@@ -19,14 +23,31 @@ type ChatRequest struct {
 	// Structured output support
 	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
 
+	// Tools / function calling
+	StrictTools *bool `json:"strict_tools,omitempty"`
+
+	// Grounded generation (RAG). When non-empty, Cohere requires
+	// safety_mode to be "CONTEXTUAL".
+	Documents []Document `json:"documents,omitempty"`
+
 	// Cohere-specific parameters
 	SafetyMode *string `json:"safety_mode,omitempty"`
 }
 
-// ResponseFormat represents Cohere's response format configuration
+// ResponseFormat represents Cohere's response format configuration.
+// Schema is the raw JSON schema body (sent alongside Type=="json_object"
+// for schema-constrained output; see Cohere v2 chat docs).
 type ResponseFormat struct {
-	Type   string      `json:"type"`
-	Schema interface{} `json:"schema,omitempty"`
+	Type   string          `json:"type"`
+	Schema json.RawMessage `json:"schema,omitempty"`
+}
+
+// Document represents a single grounding document for Cohere's RAG flow.
+// Data holds arbitrary key/value fields (e.g. title, snippet) that the
+// model can cite. ID is optional but useful for citation tracking.
+type Document struct {
+	ID   string            `json:"id,omitempty"`
+	Data map[string]string `json:"data"`
 }
 
 // ChatResponse represents the response from Cohere's chat API

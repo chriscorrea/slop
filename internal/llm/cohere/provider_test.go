@@ -1,6 +1,7 @@
 package cohere
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"testing"
@@ -150,6 +151,102 @@ func TestBuildRequest(t *testing.T) {
 				assert.True(t, ok, "Request should be *ChatRequest")
 				assert.NotNil(t, chatReq.ResponseFormat)
 				assert.Equal(t, "json_object", chatReq.ResponseFormat.Type)
+				assert.Empty(t, chatReq.Documents)
+				assert.Nil(t, chatReq.StrictTools)
+			},
+		},
+		{
+			name: "Documents non-empty auto-sets CONTEXTUAL safety mode",
+			options: &GenerateOptions{
+				Documents: []Document{
+					{ID: "windmill-1", Data: map[string]string{
+						"title": "Building the windmill",
+						"text":  "four legs good, two legs bad",
+					}},
+				},
+			},
+			validate: func(t *testing.T, request interface{}) {
+				chatReq := request.(*ChatRequest)
+				assert.Len(t, chatReq.Documents, 1)
+				assert.Equal(t, "windmill-1", chatReq.Documents[0].ID)
+				if assert.NotNil(t, chatReq.SafetyMode) {
+					assert.Equal(t, "CONTEXTUAL", *chatReq.SafetyMode)
+				}
+			},
+		},
+		{
+			name:    "Documents empty leaves SafetyMode unset",
+			options: &GenerateOptions{},
+			validate: func(t *testing.T, request interface{}) {
+				chatReq := request.(*ChatRequest)
+				assert.Empty(t, chatReq.Documents)
+				assert.Nil(t, chatReq.SafetyMode)
+			},
+		},
+		{
+			name: "Explicit SafetyMode preserved alongside Documents",
+			options: &GenerateOptions{
+				SafetyMode: common.StringPtr("STRICT"),
+				Documents: []Document{
+					{Data: map[string]string{"text": "Snowball's plans"}},
+				},
+			},
+			validate: func(t *testing.T, request interface{}) {
+				chatReq := request.(*ChatRequest)
+				if assert.NotNil(t, chatReq.SafetyMode) {
+					assert.Equal(t, "STRICT", *chatReq.SafetyMode,
+						"caller-provided safety mode must not be overwritten")
+				}
+			},
+		},
+		{
+			name: "StrictTools populates the request field",
+			options: &GenerateOptions{
+				StrictTools: common.BoolPtr(true),
+			},
+			validate: func(t *testing.T, request interface{}) {
+				chatReq := request.(*ChatRequest)
+				if assert.NotNil(t, chatReq.StrictTools) {
+					assert.True(t, *chatReq.StrictTools)
+				}
+			},
+		},
+		{
+			name: "Schema wiring round-trips through response_format",
+			options: &GenerateOptions{
+				GenerateOptions: common.GenerateOptions{
+					ResponseFormat: &common.ResponseFormat{
+						Type:   "json_schema",
+						Name:   "boxer_quote",
+						Schema: json.RawMessage(`{"type":"object","properties":{"quote":{"type":"string"}}}`),
+					},
+				},
+			},
+			validate: func(t *testing.T, request interface{}) {
+				chatReq := request.(*ChatRequest)
+				if assert.NotNil(t, chatReq.ResponseFormat) {
+					assert.Equal(t, "json_object", chatReq.ResponseFormat.Type,
+						"Cohere v2 expects json_object even when a schema is attached")
+					assert.JSONEq(t,
+						`{"type":"object","properties":{"quote":{"type":"string"}}}`,
+						string(chatReq.ResponseFormat.Schema))
+				}
+			},
+		},
+		{
+			name: "ThinkingLevel is ignored (Cohere selects by model)",
+			options: &GenerateOptions{
+				GenerateOptions: common.GenerateOptions{
+					Thinking: common.ThinkingHigh,
+				},
+			},
+			validate: func(t *testing.T, request interface{}) {
+				chatReq := request.(*ChatRequest)
+				// thinking must not leak into any request-level field
+				assert.Nil(t, chatReq.ResponseFormat)
+				assert.Nil(t, chatReq.SafetyMode)
+				assert.Nil(t, chatReq.StrictTools)
+				assert.Empty(t, chatReq.Documents)
 			},
 		},
 	}
@@ -399,6 +496,39 @@ func TestBuildOptions(t *testing.T) {
 				// verify temperature is also set
 				assert.NotNil(t, genOpts.Temperature, "Temperature should be set")
 				assert.Equal(t, 0.7, *genOpts.Temperature, "Temperature should be 0.7")
+			},
+		},
+		{
+			name: "Config with ResponseSchema wires canonical ResponseFormat",
+			config: &config.Config{
+				Parameters: config.Parameters{
+					ResponseSchema: `{"type":"object","properties":{"animal":{"type":"string"}}}`,
+				},
+			},
+			validate: func(t *testing.T, options []interface{}) {
+				genOpts := options[0].(*GenerateOptions)
+				if assert.NotNil(t, genOpts.ResponseFormat, "ResponseFormat should be set when ResponseSchema is present") {
+					assert.Equal(t, "json_schema", genOpts.ResponseFormat.Type)
+					assert.Equal(t, "response", genOpts.ResponseFormat.Name)
+					assert.JSONEq(t,
+						`{"type":"object","properties":{"animal":{"type":"string"}}}`,
+						string(genOpts.ResponseFormat.Schema))
+				}
+			},
+		},
+		{
+			name: "Config with Thinking=high is a no-op for Cohere",
+			config: &config.Config{
+				Parameters: config.Parameters{
+					Thinking: "high",
+				},
+			},
+			validate: func(t *testing.T, options []interface{}) {
+				genOpts := options[0].(*GenerateOptions)
+				// Cohere routes reasoning via model selection, not request params
+				assert.Equal(t, common.ThinkingOff, genOpts.Thinking,
+					"ThinkingLevel must not leak into Cohere options")
+				assert.Nil(t, genOpts.ResponseFormat)
 			},
 		},
 	}
