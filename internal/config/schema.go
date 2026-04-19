@@ -189,6 +189,11 @@ func DefaultConfigSchema() *ConfigSchema {
 				Description: "Ollama API base URL",
 				Default:     "http://127.0.0.1:11434",
 			},
+			"providers.ollama.keep_alive": {
+				Type:        reflect.TypeOf(""),
+				Description: "How long Ollama keeps models warm in RAM (e.g. 5m, 1h, 0)",
+				Default:     "5m",
+			},
 			"providers.mistral.api_key": {
 				Type:        reflect.TypeOf(""),
 				Description: "Mistral API key for Mistral models",

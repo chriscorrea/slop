@@ -1,6 +1,7 @@
 package ollama
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -144,7 +145,33 @@ func TestBuildRequest(t *testing.T) {
 			validate: func(t *testing.T, request interface{}) {
 				chatReq, ok := request.(*ChatRequest)
 				assert.True(t, ok, "Request should be *ChatRequest")
-				assert.Equal(t, "json", chatReq.Format)
+				assert.JSONEq(t, `"json"`, string(chatReq.Format))
+			},
+		},
+		{
+			name: "Build request with JSON schema passthrough",
+			options: func() interface{} {
+				schema := []byte(`{"type":"object","properties":{"quote":{"type":"string"}},"required":["quote"]}`)
+				return NewGenerateOptions(func(o *GenerateOptions) {
+					common.WithSchema("character_quote", schema)(&o.GenerateOptions)
+				})
+			}(),
+			validate: func(t *testing.T, request interface{}) {
+				chatReq, ok := request.(*ChatRequest)
+				assert.True(t, ok, "Request should be *ChatRequest")
+				expected := `{"type":"object","properties":{"quote":{"type":"string"}},"required":["quote"]}`
+				assert.JSONEq(t, expected, string(chatReq.Format))
+			},
+		},
+		{
+			name:    "Build request wires keep_alive",
+			options: NewGenerateOptions(WithKeepAlive("10m")),
+			validate: func(t *testing.T, request interface{}) {
+				chatReq, ok := request.(*ChatRequest)
+				assert.True(t, ok, "Request should be *ChatRequest")
+				if assert.NotNil(t, chatReq.KeepAlive) {
+					assert.Equal(t, "10m", *chatReq.KeepAlive)
+				}
 			},
 		},
 	}
@@ -424,6 +451,89 @@ func TestParseResponse_NoThinking(t *testing.T) {
 	assert.Equal(t, "Four legs good, two legs bad.", content)
 }
 
+// TestBuildOptions_KeepAlive confirms the provider-scoped keep_alive config
+// surfaces as a request-level KeepAlive option.
+func TestBuildOptions_KeepAlive(t *testing.T) {
+	provider := New()
+
+	tests := []struct {
+		name          string
+		keepAlive     string
+		wantKeepAlive *string
+	}{
+		{name: "empty is omitted", keepAlive: "", wantKeepAlive: nil},
+		{name: "5m passes through", keepAlive: "5m", wantKeepAlive: stringPtr("5m")},
+		{name: "zero unloads", keepAlive: "0", wantKeepAlive: stringPtr("0")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Providers: config.Providers{
+					Ollama: config.Ollama{KeepAlive: tt.keepAlive},
+				},
+			}
+			opts := provider.BuildOptions(cfg)
+			require := assert.New(t)
+			require.Len(opts, 1)
+			ollamaOpts, ok := opts[0].(*GenerateOptions)
+			require.True(ok)
+
+			if tt.wantKeepAlive == nil {
+				require.Nil(ollamaOpts.KeepAlive)
+			} else {
+				require.NotNil(ollamaOpts.KeepAlive)
+				require.Equal(*tt.wantKeepAlive, *ollamaOpts.KeepAlive)
+			}
+
+			// verify it also reaches the final request body
+			req, err := provider.BuildRequest(nil, "gemma4:latest", ollamaOpts, slog.Default())
+			require.NoError(err)
+			chatReq, ok := req.(*ChatRequest)
+			require.True(ok)
+			if tt.wantKeepAlive == nil {
+				require.Nil(chatReq.KeepAlive)
+			} else {
+				require.NotNil(chatReq.KeepAlive)
+				require.Equal(*tt.wantKeepAlive, *chatReq.KeepAlive)
+			}
+		})
+	}
+}
+
+// TestBuildOptions_ResponseSchema confirms cfg.Parameters.ResponseSchema
+// is wrapped into ResponseFormat and passed through to the request body.
+func TestBuildOptions_ResponseSchema(t *testing.T) {
+	provider := New()
+	schema := `{"type":"object","properties":{"animal":{"type":"string"}},"required":["animal"]}`
+	cfg := &config.Config{
+		Parameters: config.Parameters{ResponseSchema: schema},
+	}
+
+	opts := provider.BuildOptions(cfg)
+	require := assert.New(t)
+	require.Len(opts, 1)
+	ollamaOpts, ok := opts[0].(*GenerateOptions)
+	require.True(ok)
+	require.NotNil(ollamaOpts.ResponseFormat)
+	require.Equal("json_schema", ollamaOpts.ResponseFormat.Type)
+	require.JSONEq(schema, string(ollamaOpts.ResponseFormat.Schema))
+
+	req, err := provider.BuildRequest(nil, "gemma4:latest", ollamaOpts, slog.Default())
+	require.NoError(err)
+	chatReq, ok := req.(*ChatRequest)
+	require.True(ok)
+	require.JSONEq(schema, string(chatReq.Format))
+
+	// raw JSON bytes must be identical (not re-encoded, not a string literal)
+	var format json.RawMessage = chatReq.Format
+	require.NotEqual(`"json"`, string(format))
+}
+
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+func stringPtr(s string) *string {
+	return &s
 }

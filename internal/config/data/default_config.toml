@@ -46,6 +46,7 @@ max_retries = 2
 
 [providers.ollama]
 base_url = "http://127.0.0.1:11434"
+keep_alive = "5m"
 
 [providers.mistral]
 api_key = ""
