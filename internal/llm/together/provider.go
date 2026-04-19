@@ -8,6 +8,11 @@
 //   response, err := client.Generate(ctx, messages, together.WithTemperature(0.7))
 //
 // Together model documentation: https://api.together.ai/models and https://docs.together.ai/docs/models
+//
+// TODO: the default "deep" model slot for Together (see
+// internal/data/configs/models.json) is pending deploy-time verification
+// against Together's live /models endpoint. Ping the API and pin the current
+// best deep model before relying on the default in production.
 
 package together
 
@@ -83,6 +88,12 @@ func (p *Provider) BuildOptions(cfg *config.Config) []interface{} {
 	}
 	if cfg.Format.JSON {
 		functionalOpts = append(functionalOpts, WithJSONFormat())
+	}
+
+	// if a response schema is provided, wrap it in the json_schema envelope
+	// schema takes precedence over the plain json_object toggle
+	if schema := cfg.Parameters.ResponseSchema; schema != "" {
+		functionalOpts = append(functionalOpts, WithSchema("response", []byte(schema)))
 	}
 
 	return []interface{}{NewGenerateOptions(functionalOpts...)}
@@ -165,14 +176,33 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 		requestBody.SafetyModel = config.SafetyModel
 	}
 
-	// handle structured output if requested
+	// handle structured output if requested. Together is OpenAI-compatible and
+	// supports both the legacy {type: json_object} and the json_schema envelope
 	if config.ResponseFormat != nil {
-		requestBody.ResponseFormat = &common.ResponseFormat{
-			Type: config.ResponseFormat.Type,
-		}
+		requestBody.ResponseFormat = buildResponseFormat(config.ResponseFormat)
 	}
 
 	return requestBody, nil
+}
+
+// buildResponseFormat converts a canonical common.ResponseFormat into Together's
+// wire shape. For json_schema, it emits the nested envelope with name, schema,
+// and strict; for anything else it passes the type through (e.g. json_object).
+func buildResponseFormat(rf *common.ResponseFormat) *ChatResponseFormat {
+	if rf == nil {
+		return nil
+	}
+	if rf.Type == "json_schema" && len(rf.Schema) > 0 {
+		return &ChatResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &JSONSchemaConfig{
+				Name:   rf.Name,
+				Schema: rf.Schema,
+				Strict: rf.Strict,
+			},
+		}
+	}
+	return &ChatResponseFormat{Type: rf.Type}
 }
 
 // ParseResponse parses a Together.AI API response and extracts content and usage
