@@ -29,6 +29,10 @@ type Parameters struct {
 	// translated by each provider adapter into its upstream native parameter.
 	Thinking string `mapstructure:"thinking"`
 
+	// response schema for structured output — raw JSON, loaded from a file
+	// or accepted inline on the --schema flag.
+	ResponseSchema string `mapstructure:"response_schema"`
+
 	// application behavior
 	Timeout    int `mapstructure:"timeout"`
 	MaxRetries int `mapstructure:"max_retries"`

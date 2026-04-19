@@ -40,3 +40,15 @@ func ValidateJSONResponse(content string, config *GenerateOptions, logger *slog.
 func IsJSONFormatRequested(config *GenerateOptions) bool {
 	return config.ResponseFormat != nil && config.ResponseFormat.Type == "json_object"
 }
+
+// ValidateJSONSchema is basic check that the given bytes are valid JSON
+func ValidateJSONSchema(schema []byte) error {
+	if len(schema) == 0 {
+		return nil
+	}
+	var parsed interface{}
+	if err := json.Unmarshal(schema, &parsed); err != nil {
+		return fmt.Errorf("invalid JSON schema: %w", err)
+	}
+	return nil
+}

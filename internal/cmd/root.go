@@ -163,6 +163,7 @@ var rootCmd = &cobra.Command{
 			"hide-thinking":  "hide_thinking",
 			"show-thinking":  "show_thinking",
 			"thinking":       "parameters.thinking",
+			"schema":         "parameters.response_schema",
 		}
 
 		// bind each flag to corresponding Viper key
@@ -252,6 +253,9 @@ func init() {
 
 	// thinking/reasoning control (off|medium|high)
 	rootCmd.PersistentFlags().StringP("thinking", "t", "off", "Request model reasoning effort: off|medium|high")
+
+	// structured output schema — accepts a file path or inline JSON
+	rootCmd.PersistentFlags().String("schema", "", "JSON schema for structured output (file path or inline JSON)")
 
 	// mark the mutually exclusive flags
 	rootCmd.MarkFlagsMutuallyExclusive("fast", "deep")

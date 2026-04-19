@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -162,6 +163,44 @@ func TestNewGenerateOptions_MultipleOptions(t *testing.T) {
 	}
 	if opts.ToolChoice != nil {
 		t.Errorf("Expected ToolChoice to remain nil, got %v", opts.ToolChoice)
+	}
+}
+
+// TestWithSchema_RoundTrip confirms WithSchema populates ResponseFormat
+// with type, name, strict, and the raw schema bytes
+// And confirms the result survives a basic JSON marshal/unmarshal cycle
+func TestWithSchema_RoundTrip(t *testing.T) {
+	schemaJSON := []byte(`{"type":"object","properties":{"character":{"type":"string"},"quote":{"type":"string"}},"required":["character","quote"]}`)
+
+	opts := NewGenerateOptions(WithSchema("animal_quote", schemaJSON))
+
+	if opts.ResponseFormat == nil {
+		t.Fatal("expected ResponseFormat to be set")
+	}
+	if opts.ResponseFormat.Type != "json_schema" {
+		t.Errorf("expected type json_schema, got %q", opts.ResponseFormat.Type)
+	}
+	if opts.ResponseFormat.Name != "animal_quote" {
+		t.Errorf("expected name animal_quote, got %q", opts.ResponseFormat.Name)
+	}
+	if opts.ResponseFormat.Strict == nil || !*opts.ResponseFormat.Strict {
+		t.Errorf("expected Strict to be true by default when schema is set")
+	}
+	if string(opts.ResponseFormat.Schema) != string(schemaJSON) {
+		t.Errorf("schema bytes did not round-trip: want %q got %q", schemaJSON, opts.ResponseFormat.Schema)
+	}
+
+	// marshal / unmarshal to confirm JSON shape is stable
+	wire, err := json.Marshal(opts.ResponseFormat)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	var decoded ResponseFormat
+	if err := json.Unmarshal(wire, &decoded); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if decoded.Type != "json_schema" || decoded.Name != "animal_quote" {
+		t.Errorf("decoded mismatch: %+v", decoded)
 	}
 }
 

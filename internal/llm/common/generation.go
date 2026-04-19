@@ -122,6 +122,24 @@ func WithJSONFormat() GenerateOption {
 	}
 }
 
+// WithSchema requests schema-constrained structured output. Adapters that
+// support it wrap the schema in their provider-specific envelope
+// (e.g.OpenAI json_schema, Anthropic output_config, and so on).
+//
+// `Strict` defaults to true so adherence is enforced where provider supports it
+// Providers that don't understand strict simply ignore the field
+func WithSchema(name string, schema []byte) GenerateOption {
+	strict := true
+	return func(c *GenerateOptions) {
+		c.ResponseFormat = &ResponseFormat{
+			Type:   "json_schema",
+			Name:   name,
+			Schema: schema,
+			Strict: &strict,
+		}
+	}
+}
+
 // WithThinking sets the requested reasoning effort. Adapters translate this
 // into their provider-specific native parameter
 // If provider/model doesn't support, silently no-op/ignore the request

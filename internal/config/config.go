@@ -2,6 +2,7 @@ package config
 
 import (
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -158,6 +159,12 @@ func (m *Manager) Load(configPath string) error {
 		return err
 	}
 
+	// resolve and validate response_schema (file path or inline JSON).
+	// failures here surface as config errors rather than runtime 400's
+	if err := m.resolveResponseSchema(); err != nil {
+		return err
+	}
+
 	// post-process configuration to handle special cases
 	m.postProcessConfig()
 
@@ -173,6 +180,46 @@ func (m *Manager) validateThinking() error {
 	default:
 		return fmt.Errorf("invalid parameters.thinking %q: expected off|medium|high", m.cfg.Parameters.Thinking)
 	}
+}
+
+// resolveResponseSchema accepts either a file path or inline JSON on the
+// response_schema parameter. Values starting with "{" or "[" are treated
+// as inline JSON and anything else is read from disk. The resolved JSON is
+// validated and written back to the parameter
+func (m *Manager) resolveResponseSchema() error {
+	raw := strings.TrimSpace(m.cfg.Parameters.ResponseSchema)
+	if raw == "" {
+		return nil
+	}
+
+	var schemaBytes []byte
+	if raw[0] == '{' || raw[0] == '[' {
+		schemaBytes = []byte(raw)
+	} else {
+		// treat as file path —(and expand ~ if present)
+		path := raw
+		if strings.HasPrefix(path, "~") {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("failed to expand home for schema path %q: %w", raw, err)
+			}
+			path = filepath.Join(home, strings.TrimPrefix(path, "~"))
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to read schema file %q: %w", raw, err)
+		}
+		schemaBytes = data
+	}
+
+	// mirrors common.ValidateJSONSchema; just ensure it's valid JSON
+	var parsed interface{}
+	if err := json.Unmarshal(schemaBytes, &parsed); err != nil {
+		return fmt.Errorf("parameters.response_schema: invalid JSON schema: %w", err)
+	}
+
+	m.cfg.Parameters.ResponseSchema = string(schemaBytes)
+	return nil
 }
 
 // config returns the current configuration
