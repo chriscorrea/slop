@@ -27,6 +27,22 @@ type Provider struct{}
 // ensure Provider implements the common provider interface
 var _ common.Provider = (*Provider)(nil)
 
+// thinking budget defaults keyed on the cross-provider ThinkingLevel.
+// medium targets moderate reasoning; high gives the model room to explore
+const (
+	thinkingBudgetMedium = 4000
+	thinkingBudgetHigh   = 16000
+)
+
+// per-model max_tokens defaults. these keep headroom for extended thinking
+// plus a generous completion on the larger Opus/Sonnet families while still
+// matching smaller models' practical output sizes
+const (
+	maxTokensDefault       = 4096
+	maxTokensSonnetFamily4 = 16384
+	maxTokensOpusFamily4   = 32768
+)
+
 // New creates a new Anthropic provider instance
 func New() *Provider {
 	return &Provider{}
@@ -94,6 +110,21 @@ func (p *Provider) BuildOptions(cfg *config.Config) []interface{} {
 		functionalOpts = append(functionalOpts, WithJSONFormat())
 	}
 
+	// translate the cross-provider thinking level into Anthropic's native
+	// extended-thinking block at request build time. silent no-op for
+	// ThinkingOff and unknown values, so a user's config default survives
+	// switching to a non-thinking model.
+	if level, err := common.ParseThinkingLevel(cfg.Parameters.Thinking); err == nil && level != common.ThinkingOff {
+		functionalOpts = append(functionalOpts, WithThinking(level))
+	}
+
+	// forward the pre-resolved response schema through common.WithSchema.
+	// the adapter wires the schema onto Anthropic's output_config envelope
+	// at request build time.
+	if schema := strings.TrimSpace(cfg.Parameters.ResponseSchema); schema != "" {
+		functionalOpts = append(functionalOpts, WithSchema("response", []byte(schema)))
+	}
+
 	return []interface{}{NewGenerateOptions(functionalOpts...)}
 }
 
@@ -105,6 +136,50 @@ func (p *Provider) RequiresAPIKey() bool {
 // returns the name of this provider
 func (p *Provider) ProviderName() string {
 	return "anthropic"
+}
+
+// supportsThinking reports whether a model id accepts the extended-thinking
+// block. conservative allowlist; unknown models silently skip the field so
+// a stray --thinking flag never breaks a request
+func supportsThinking(modelID string) bool {
+	id := strings.ToLower(modelID)
+	switch {
+	case strings.HasPrefix(id, "claude-sonnet-4-"):
+		return true
+	case strings.HasPrefix(id, "claude-opus-4-"):
+		return true
+	case strings.HasPrefix(id, "claude-3-7-sonnet"):
+		return true
+	}
+	return false
+}
+
+// thinkingBudget maps a cross-provider ThinkingLevel onto Anthropic's
+// budget_tokens parameter. unknown levels get the medium budget so a
+// caller with a stale level still gets a reasonable request
+func thinkingBudget(level common.ThinkingLevel) int {
+	switch level {
+	case common.ThinkingHigh:
+		return thinkingBudgetHigh
+	case common.ThinkingMedium:
+		return thinkingBudgetMedium
+	default:
+		return thinkingBudgetMedium
+	}
+}
+
+// defaultMaxTokens returns a reasonable max_tokens value for a given model
+// when the caller hasn't set one. claude-opus-4-* gets the largest budget,
+// claude-sonnet-4-* a middle budget, everything else a modest default
+func defaultMaxTokens(modelID string) int {
+	id := strings.ToLower(modelID)
+	switch {
+	case strings.HasPrefix(id, "claude-opus-4-"):
+		return maxTokensOpusFamily4
+	case strings.HasPrefix(id, "claude-sonnet-4-"):
+		return maxTokensSonnetFamily4
+	}
+	return maxTokensDefault
 }
 
 // BuildRequest creates an Anthropic-specific request from messages and options
@@ -145,12 +220,13 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 		systemPrompt = config.System
 	}
 
-	// create Anthropic-specific request payload
+	// create Anthropic-specific request payload. Anthropic requires
+	// max_tokens, so seed a per-model default the caller can override
 	requestBody := &MessagesRequest{
 		Model:     modelName,
 		Messages:  filteredMessages,
-		MaxTokens: 1024,                  // Anthropic requires max_tokens, so we set a default
-		Stream:    common.BoolPtr(false), // Disable streaming for now
+		MaxTokens: defaultMaxTokens(modelName),
+		Stream:    common.BoolPtr(false), // disable streaming for now
 	}
 
 	// set system prompt if provided
@@ -177,10 +253,57 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 		requestBody.StopSequences = config.StopSequences
 	}
 
+	// extended thinking: only emit on models that accept it. silent
+	// no-op for unsupported models so a user's default config survives
+	// switching to, say, haiku
+	if config.Thinking != common.ThinkingOff && supportsThinking(modelName) {
+		budget := config.ThinkingBudget
+		if budget <= 0 {
+			budget = thinkingBudget(config.Thinking)
+		}
+		requestBody.Thinking = &ThinkingConfig{
+			Type:         "enabled",
+			BudgetTokens: budget,
+		}
+
+		// Anthropic requires max_tokens > budget_tokens. bump the ceiling
+		// when the caller's value is too tight so --thinking high still
+		// has room to deliver an answer on top of its reasoning tokens
+		if requestBody.MaxTokens <= budget {
+			adjusted := budget + maxTokensDefault
+			if logger != nil {
+				logger.Debug("adjusting max_tokens to satisfy thinking budget",
+					"model", modelName,
+					"budget_tokens", budget,
+					"original_max_tokens", requestBody.MaxTokens,
+					"adjusted_max_tokens", adjusted,
+				)
+			}
+			requestBody.MaxTokens = adjusted
+		}
+	}
+
+	// structured output: wrap json_schema requests in Anthropic's
+	// output_config envelope. non-schema formats (e.g. json_object) fall
+	// through unchanged — Anthropic doesn't have a parallel for those
+	if rf := config.ResponseFormat; rf != nil && rf.Type == "json_schema" && len(rf.Schema) > 0 {
+		requestBody.OutputConfig = &OutputConfig{
+			Format: &OutputFormat{
+				Type:   "json_schema",
+				Name:   rf.Name,
+				Schema: rf.Schema,
+				Strict: rf.Strict,
+			},
+		}
+	}
+
 	return requestBody, nil
 }
 
-// ParseResponse parses an Anthropic API response and extracts content and usage
+// ParseResponse parses an Anthropic API response and extracts content and usage.
+// thinking blocks are re-inlined as a <think>...</think> prefix on the content
+// string so downstream format.ApplyThinkingFilter treats Anthropic's structured
+// thinking identically to an inline-tag thinking stream
 func (p *Provider) ParseResponse(body []byte, logger *slog.Logger) (string, *common.Usage, error) {
 	// parse the response using Anthropic's Messages API format
 	var anthropicResp MessagesResponse
@@ -194,19 +317,35 @@ func (p *Provider) ParseResponse(body []byte, logger *slog.Logger) (string, *com
 		return "", nil, fmt.Errorf("no content in Anthropic response")
 	}
 
-	// concatenate all text content items
-	var contentParts []string
+	// walk the content array once, collecting text and thinking blocks
+	// into separate buffers. Anthropic emits thinking blocks before the
+	// text block they precede, so preserving order is not required — we
+	// just concatenate each kind in stream order
+	var textParts []string
+	var thinkingParts []string
 	for _, item := range anthropicResp.Content {
-		if item.Type == "text" {
-			contentParts = append(contentParts, item.Text)
+		switch item.Type {
+		case "text":
+			textParts = append(textParts, item.Text)
+		case "thinking":
+			if item.Thinking != "" {
+				thinkingParts = append(thinkingParts, item.Thinking)
+			}
 		}
 	}
 
-	if len(contentParts) == 0 {
+	if len(textParts) == 0 {
 		return "", nil, fmt.Errorf("no text content in Anthropic response")
 	}
 
-	content := strings.Join(contentParts, "")
+	content := strings.Join(textParts, "")
+
+	// re-inline thinking as a <think> tag so the downstream filter treats
+	// Anthropic structured thinking the same as any other provider's
+	// inline-tag thinking stream
+	if len(thinkingParts) > 0 {
+		content = "<think>" + strings.Join(thinkingParts, "") + "</think>\n" + content
+	}
 
 	// convert Anthropic usage to common format
 	var usage *common.Usage
@@ -230,7 +369,7 @@ func (p *Provider) HandleError(statusCode int, body []byte) error {
 	case http.StatusUnauthorized:
 		return fmt.Errorf(`Anthropic API authentication failed.
 
-Check your API key and ensure it is set correctly. 
+Check your API key and ensure it is set correctly.
 You can set the API key using the environment variable ANTHROPIC_API_KEY or via slop config set anthropic-key=<your_api_key>
 Get an API key from https://console.anthropic.com/settings/keys`)
 
