@@ -5,8 +5,8 @@
       "description": "Claude models from Anthropic",
       "reference": "https://docs.anthropic.com/en/docs/about-claude/models/overview",
       "models": {
-        "fast": "claude-3-5-haiku-latest",
-        "deep": "claude-sonnet-4-0"
+        "fast": "claude-haiku-4-5",
+        "deep": "claude-sonnet-4-6"
       }
     },
     "openai": {
@@ -14,8 +14,8 @@
       "description": "GPT models from OpenAI",
       "reference": "https://platform.openai.com/docs/models",
       "models": {
-        "fast": "gpt-4.1-mini",
-        "deep": "o3"
+        "fast": "gpt-5.4-mini",
+        "deep": "gpt-5.4"
       }
     },
     "cohere": {
@@ -24,7 +24,7 @@
       "reference": "https://docs.cohere.com/v2/docs/models",
       "models": {
         "fast": "command-r7b-12-2024",
-        "deep": "command-a-03-2025"
+        "deep": "command-a-reasoning-08-2025"
       }
     },
     "mistral": {
@@ -32,8 +32,8 @@
       "description": "Mistral models",
       "reference": "https://docs.mistral.ai/getting-started/models/models_overview/",
       "models": {
-        "fast": "mistral-small-2503",
-        "deep": "magistral-medium-2506"
+        "fast": "mistral-small-2603",
+        "deep": "magistral-medium-2509"
       }
     },
     "ollama": {
@@ -41,8 +41,8 @@
       "description": "Local models via Ollama",
       "reference": "https://ollama.com/library",
       "models": {
-        "fast": "gemma3:latest",
-        "deep": "deepseek-r1:8b"
+        "fast": "gemma4:latest",
+        "deep": "deepseek-r1:14b"
       }
     },
     "groq": {
@@ -51,7 +51,7 @@
       "reference": "https://console.groq.com/docs/models",
       "models": {
         "fast": "llama-3.1-8b-instant",
-        "deep": "llama-3.3-70b-versatile"
+        "deep": "groq/compound"
       }
     },
     "together": {
@@ -60,7 +60,7 @@
       "reference": "https://docs.together.ai/docs/models",
       "models": {
         "fast": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-        "deep": "deepseek-ai/DeepSeek-R1-0528"
+        "deep": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
       }
     }
   }

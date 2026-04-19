@@ -173,22 +173,22 @@ func DefaultConfigSchema() *ConfigSchema {
 			"models.remote.fast.provider": {
 				Type:        reflect.TypeOf(""),
 				Description: "Provider for remote fast model",
-				Default:     "anthropic",
+				Default:     "mistral",
 			},
 			"models.remote.fast.name": {
 				Type:        reflect.TypeOf(""),
 				Description: "Name of remote fast model",
-				Default:     "claude-3-5-haiku-latest",
+				Default:     "mistral-small-2603",
 			},
 			"models.remote.deep.provider": {
 				Type:        reflect.TypeOf(""),
 				Description: "Provider for remote deep/reasoning model",
-				Default:     "anthropic",
+				Default:     "mistral",
 			},
 			"models.remote.deep.name": {
 				Type:        reflect.TypeOf(""),
 				Description: "Name of remote deep/reasoning model",
-				Default:     "claude-sonnet-4-20250514",
+				Default:     "magistral-medium-2509",
 			},
 			"models.local.fast.provider": {
 				Type:        reflect.TypeOf(""),
@@ -198,7 +198,7 @@ func DefaultConfigSchema() *ConfigSchema {
 			"models.local.fast.name": {
 				Type:        reflect.TypeOf(""),
 				Description: "Name of local fast model",
-				Default:     "gemma3:latest",
+				Default:     "gemma4:latest",
 			},
 			"models.local.deep.provider": {
 				Type:        reflect.TypeOf(""),
