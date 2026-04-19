@@ -65,7 +65,7 @@ func TestSelectModel(t *testing.T) {
 			args:             []string{},
 			flagSettings:     map[string]string{"local": "true"},
 			expectedProvider: "ollama",
-			expectedModel:    "gemma3:latest", // from default_config.toml
+			expectedModel:    "gemma4:latest", // from default_config.toml
 		},
 		{
 			name:             "Local Deep model via --local and --deep flags",
@@ -115,7 +115,7 @@ func TestSelectModel(t *testing.T) {
 			args:             []string{"villanelle", "a sample prompt"},
 			flagSettings:     map[string]string{"deep": "false"}, // local preset still applies.
 			expectedProvider: "ollama",
-			expectedModel:    "gemma3:latest",
+			expectedModel:    "gemma4:latest",
 		},
 		{
 			name:             "Multiple flags can completely override named command presets",
@@ -194,7 +194,7 @@ func TestDefaultModelSelector_SelectModel(t *testing.T) {
 			name:             "local flag",
 			flagSettings:     map[string]string{"local": "true"},
 			expectedProvider: "ollama",
-			expectedModel:    "gemma3:latest",
+			expectedModel:    "gemma4:latest",
 		},
 		{
 			name:             "local + deep",
