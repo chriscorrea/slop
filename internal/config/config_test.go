@@ -81,8 +81,8 @@ func TestNewDefault(t *testing.T) {
 			t.Errorf("Expected Local Fast Provider to be 'ollama', got %s", local.Fast.Provider)
 		}
 
-		if local.Fast.Name != "gemma3:latest" {
-			t.Errorf("Expected Local Fast Name to be 'gemma3:latest', got %s", local.Fast.Name)
+		if local.Fast.Name != "gemma4:latest" {
+			t.Errorf("Expected Local Fast Name to be 'gemma4:latest', got %s", local.Fast.Name)
 		}
 
 		// Test Deep model

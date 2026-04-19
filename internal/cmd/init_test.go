@@ -207,9 +207,9 @@ func TestInitCommand(t *testing.T) {
 			*response.(*string) = "test-api-key-12345"
 		case *survey.Input:
 			if strings.Contains(p.Message, "fast model") {
-				*response.(*string) = "claude-3-5-haiku-latest"
+				*response.(*string) = "claude-haiku-4-5"
 			} else if strings.Contains(p.Message, "Deep model") {
-				*response.(*string) = "claude-sonnet-4-0"
+				*response.(*string) = "claude-sonnet-4-6"
 			}
 		}
 		return nil
@@ -242,8 +242,8 @@ func TestInitCommand(t *testing.T) {
 	}
 
 	fastModel := viper.GetString("models.remote.fast.name")
-	if fastModel != "claude-3-5-haiku-latest" {
-		t.Errorf("Expected fast model to be 'claude-3-5-haiku-latest', got '%s'", fastModel)
+	if fastModel != "claude-haiku-4-5" {
+		t.Errorf("Expected fast model to be 'claude-haiku-4-5', got '%s'", fastModel)
 	}
 }
 

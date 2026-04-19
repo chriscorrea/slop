@@ -13,15 +13,15 @@ max_retries = 1
 
 [models.remote.fast]
 provider = "mistral"
-name = "ministral-8b-latest"
+name = "mistral-small-2603"
 
 [models.remote.deep]
 provider = "mistral"
-name = "magistral-medium-latest"
+name = "magistral-medium-2509"
 
 [models.local.fast]
 provider = "ollama"
-name = "gemma3:latest"
+name = "gemma4:latest"
 
 [models.local.deep]
 provider = "ollama"
