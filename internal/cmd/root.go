@@ -93,6 +93,11 @@ func showCustomHelp(cmd *cobra.Command) {
 	})
 
 	fmt.Fprintln(cmd.OutOrStdout())
+	fmt.Fprintln(cmd.OutOrStdout(), "Provider notes:")
+	fmt.Fprintln(cmd.OutOrStdout(), "  groq/compound is agentic: it may perform web search or code execution")
+	fmt.Fprintln(cmd.OutOrStdout(), "  under the hood, so latency can vary from call to call.")
+
+	fmt.Fprintln(cmd.OutOrStdout())
 	fmt.Fprintln(cmd.OutOrStdout(), "Use \"slop [command] --help\" for more information about core commands such as list, config, and init")
 	fmt.Fprintln(cmd.OutOrStdout(), "Use \"slop help-command [your-command]\" for help on a user-defined, custom named command")
 }

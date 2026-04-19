@@ -7,7 +7,8 @@
 //   client := groq.NewClient(apiKey)
 //   response, err := client.Generate(ctx, messages, groq.WithTemperature(0.7))
 //
-// Groq models include: llama-3.3-70b-versatile, llama-3.1-8b-instant, mixtral-8x7b-32768
+// Groq models include: llama-3.3-70b-versatile, llama-3.1-8b-instant,
+// qwen-3-32b, deepseek-r1-distill-llama-70b, and the agentic groq/compound.
 
 package groq
 
@@ -16,10 +17,16 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/chriscorrea/slop/internal/config"
 	"github.com/chriscorrea/slop/internal/llm/common"
 )
+
+// compoundModelID is the canonical ID of Groq's agentic Compound model.
+// Compound performs web search and code execution under the hood, so latency
+// is variable and the adapter surfaces a debug log for visibility
+const compoundModelID = "groq/compound"
 
 // Provider implements the unified registry.Provider interface for Groq
 type Provider struct{}
@@ -30,6 +37,41 @@ var _ common.Provider = (*Provider)(nil)
 // New creates a new Groq provider instance
 func New() *Provider {
 	return &Provider{}
+}
+
+// supportsReasoning reports whether the given Groq model ID accepts the
+// reasoning_format parameter. It returns true for the qwen-3-* and
+// deepseek-r1-distill-* families; false for Compound (which reasons natively
+// without a knob) and for plain chat models
+func supportsReasoning(modelID string) bool {
+	id := strings.ToLower(strings.TrimSpace(modelID))
+	if id == "" {
+		return false
+	}
+	// Compound reasons natively; parameter is not applicable
+	if id == compoundModelID {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(id, "qwen-3-"),
+		strings.HasPrefix(id, "qwen3-"),
+		strings.HasPrefix(id, "deepseek-r1-distill-"):
+		return true
+	}
+	return false
+}
+
+// translateThinkingLevel maps the common ThinkingLevel to Groq's
+// reasoning_format string. "parsed" is cleanest because it returns the
+// reasoning in a separate structured field; the downstream thinking filter
+// handles inline <think> tags when models emit them directly
+func translateThinkingLevel(level common.ThinkingLevel) string {
+	switch level {
+	case common.ThinkingMedium, common.ThinkingHigh:
+		return "parsed"
+	default:
+		return ""
+	}
 }
 
 // CreateClient creates a new LLM client using the unified adapter pattern
@@ -92,7 +134,30 @@ func (p *Provider) BuildOptions(cfg *config.Config) []interface{} {
 		functionalOpts = append(functionalOpts, WithJSONFormat())
 	}
 
+	// translate the cross-provider thinking level into Groq's reasoning_format.
+	// BuildRequest gates the field by model ID so plain models and Compound
+	// don't receive a parameter they would reject or ignore
+	if level, err := common.ParseThinkingLevel(cfg.Parameters.Thinking); err == nil {
+		if format := translateThinkingLevel(level); format != "" {
+			functionalOpts = append(functionalOpts, WithReasoningFormat(format))
+		}
+	}
+
+	// schema-constrained structured output — ResponseSchema is pre-resolved
+	// inline JSON by the config manager, ready for passthrough
+	if schema := strings.TrimSpace(cfg.Parameters.ResponseSchema); schema != "" {
+		functionalOpts = append(functionalOpts, withCommonSchema("response", []byte(schema)))
+	}
+
 	return []interface{}{NewGenerateOptions(functionalOpts...)}
+}
+
+// withCommonSchema adapts the common WithSchema option into the Groq
+// GenerateOption signature so it can be applied alongside provider-specific options
+func withCommonSchema(name string, schema []byte) GenerateOption {
+	return func(c *GenerateOptions) {
+		common.WithSchema(name, schema)(&c.GenerateOptions)
+	}
 }
 
 // RequiresAPIKey returns true since Groq requires an API key
@@ -121,6 +186,13 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 
 	// log the API request using common utilities
 	common.LogAPIRequest(logger, "Groq", modelName, messages, &config.GenerateOptions)
+
+	// Compound is an agentic model: it may perform web search or code
+	// execution under the hood. Surface a debug log so operators tracing
+	// latency spikes can see the expected variability
+	if strings.EqualFold(strings.TrimSpace(modelName), compoundModelID) && logger != nil {
+		logger.Debug("groq/compound may perform web search or code execution — latency varies")
+	}
 
 	// create Groq-specific request payload
 	requestBody := &ChatRequest{
@@ -154,10 +226,32 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 		requestBody.Seed = config.Seed
 	}
 
-	// handle structured output if requested
+	// only wire reasoning_format for models that support it; Compound
+	// reasons natively and plain chat models would reject the field
+	if config.ReasoningFormat != nil && supportsReasoning(modelName) {
+		requestBody.ReasoningFormat = config.ReasoningFormat
+	}
+
+	// handle structured output if requested. Groq accepts OpenAI's wire
+	// shape: {"type":"json_object"} for unconstrained JSON or a nested
+	// json_schema envelope carrying the schema, name, and strict flag
 	if config.ResponseFormat != nil {
-		requestBody.ResponseFormat = &common.ResponseFormat{
-			Type: config.ResponseFormat.Type,
+		switch config.ResponseFormat.Type {
+		case "json_object":
+			requestBody.ResponseFormat = &chatResponseFormat{Type: "json_object"}
+		case "json_schema":
+			spec := &chatJSONSchemaSpec{
+				Name:   config.ResponseFormat.Name,
+				Schema: config.ResponseFormat.Schema,
+				Strict: config.ResponseFormat.Strict,
+			}
+			if spec.Name == "" {
+				spec.Name = "response"
+			}
+			requestBody.ResponseFormat = &chatResponseFormat{
+				Type:       "json_schema",
+				JSONSchema: spec,
+			}
 		}
 	}
 
@@ -192,7 +286,7 @@ func (p *Provider) HandleError(statusCode int, body []byte) error {
 	case http.StatusUnauthorized:
 		return fmt.Errorf(`Groq API authentication failed.
 
-Check your API key and ensure it is set correctly. 
+Check your API key and ensure it is set correctly.
 You can set the API key using the environment variable GROQ_API_KEY or via slop config set groq-key=<your_api_key>
 Get an API key from https://console.groq.com/keys`)
 
