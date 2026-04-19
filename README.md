@@ -5,7 +5,7 @@
 [![CI](https://github.com/chriscorrea/slop/actions/workflows/push.yml/badge.svg?branch=main)](https://github.com/chriscorrea/slop/actions/workflows/push.yml)
 [![Latest Release](https://img.shields.io/github/v/release/chriscorrea/slop)](https://github.com/chriscorrea/slop/releases)
 
-**Slop** (_stochastic language operator_) brings large language models to your command line as simple, composable tools. 
+**SLOP** (_stochastic language operator_) brings large language models to your command line as simple, composable tools. 
 
 You can treat AI models like powerful text-processing functions and chain them together, building observable and repeatable workflows without heavy tooling.
 
@@ -21,9 +21,10 @@ You can treat AI models like powerful text-processing functions and chain them t
 - **Create AI Workflows:** Chain AI commands together to create multi-step workflows—no complex frameworks required.
 - **Reusable Commands:** Save your most useful instructions as custom commands that you can run again and again.
 - **Project Context:** Automatically include relevant project files in your prompt context.
+- **Reasoning Traces:** Toggle model thinking effort and surface chain-of-thought when you need it.
 - **Structured Output:** Format responses as clean JSON, YAML, or Markdown that works with your other tools.
 
-## 📦 Installation
+## Installation
 
 ### Pre-built Binaries (Recommended)
 
@@ -71,7 +72,7 @@ After installing, run the `init` command to configure your preferred models and 
 slop init
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 #### Simple Prompting
 
@@ -169,6 +170,16 @@ slop --local "Elaborate on the concept of a 'Ghost in the Machine' with a 2-page
 
 You can combine these flags (for example, `-ld`) to specify the right model for your job. 
 
+#### Reasoning Effort
+
+Use `--thinking` (or `-t`) to set reasoning effort: `off` (default), `medium`, or `high`.
+
+```bash
+slop -t high "Plan a phased rollout for the windmill installation"
+```
+
+By default, thinking content is hidden from output. Add `--show-thinking` to surface a model's reasoning trace.
+
 #### Supported Model Providers
 
 - **[Ollama](https://ollama.com/)** for local open-weight models including Llama, Gemma, Deepseek, and many others
@@ -180,7 +191,7 @@ You can combine these flags (for example, `-ld`) to specify the right model for 
 - **[OpenAI](https://openai.com/)**
 - **[TogetherAI](https://together.ai/)**
 
-## 🔖 Named Commands
+## Named Commands
 Create your own library of commands by saving your most common instructions. This lets you build a personalized set of tools for your daily workflows.
 
 #### Configuration
@@ -215,7 +226,7 @@ slop analyze "this function"
 slop docs "the API endpoint"  
 ```
 
-## 🗄️ Persistent Context
+## Persistent Context
 
 You can automatically add relevant files in every slop command run within a project directory. This eliminates the need to manually specify context files.
 
@@ -243,7 +254,7 @@ slop context clear
 slop --ignore-context "Quick question without project files"
 ```
 
-## 🛠️ Output Formatting
+## Output Formatting
 
 To receive a structured response, add one of the following flags to your command to automatically guide the model and clean the raw model output. 
 
@@ -255,7 +266,7 @@ To receive a structured response, add one of the following flags to your command
 
 Note that format flags are mutually exclusive.
 
-## 🔄 Exit Codes
+## Exit Codes
 
 Structured exit codes can facilitate automation and routing in shell scripts.
 
@@ -284,7 +295,7 @@ fi
 
 You can also define custom exit codes in your `config.TOML`
 
-## ⚙️ Configuration
+## Configuration
 
 #### Command-Line Configuration
 
@@ -317,7 +328,7 @@ provider = "ollama"
 name = "gemma3n:latest"
 ```
 
-## ℹ️  Helpful Commands
+## Helpful Commands
 
 ```bash
 # List all available commands
@@ -340,7 +351,10 @@ slop help [command-name]
 - `--local`, `-l`: Use local LLM provider
 - `--remote`, `-r`: Use remote LLM provider  
 - `--fast`, `-f`: Use fast/light model
-- `--deep`, `d`: Use deep/reasoning model
+- `--deep`, `-d`: Use deep/reasoning model
+- `--thinking`, `-t`: Reasoning effort: off|medium|high (default: off)
+- `--show-thinking`: Show model reasoning trace in output
+- `--hide-thinking`: Hide model reasoning trace (default)
 - `--verbose`,  `-v`: Show request details
 
 ### Parameter Flags
@@ -354,6 +368,6 @@ slop help [command-name]
 
 Contributions and issues are welcome – please see the [issues page](https://github.com/chriscorrea/slop/issues).
 
-## 📝 License
+## License
 
 This project is licensed under the [BSD-3 License](LICENSE).
