@@ -74,6 +74,13 @@ func (p *Provider) BuildOptions(cfg *config.Config) []interface{} {
 		functionalOpts = append(functionalOpts, WithJSONFormat())
 	}
 
+	// translate the cross-provider thinking level into Ollama's native
+	// think flag. Silent no-op for ThinkingOff and unknown values, so a
+	// user's config default survives switching to a non-thinking model.
+	if level, err := common.ParseThinkingLevel(cfg.Parameters.Thinking); err == nil && level != common.ThinkingOff {
+		functionalOpts = append(functionalOpts, WithThink(true))
+	}
+
 	return []interface{}{NewGenerateOptions(functionalOpts...)}
 }
 
@@ -149,6 +156,11 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 		requestBody.Format = "json"
 	}
 
+	// wire the native think flag through to the API
+	if config.Think != nil {
+		requestBody.Think = config.Think
+	}
+
 	return requestBody, nil
 }
 
@@ -178,7 +190,15 @@ func (p *Provider) ParseResponse(body []byte, logger *slog.Logger) (string, *com
 
 	content := chatResp.Message.Content
 
-	// return content and usage information
+	// Ollama returns structured thinking in a separate message.thinking
+	// field when think=true. Re-inline it as a <think> tag so the
+	// downstream format.ApplyThinkingFilter treats structured and
+	// inline-tag thinking identically. Anthropic's content-block thinking
+	// will take the same path in a later branch.
+	if chatResp.Message.Thinking != "" {
+		content = "<think>" + chatResp.Message.Thinking + "</think>\n" + content
+	}
+
 	return content, usage, nil
 }
 

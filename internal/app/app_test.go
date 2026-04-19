@@ -131,7 +131,7 @@ func TestApp_SyntheticMessageHistory_BasicScenario(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "", "")
+	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "", "", false, false)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 0, exitCode)
@@ -202,7 +202,7 @@ func TestApp_SyntheticMessageHistory_ContextFiles(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, exitCode, err := app.Run(ctx, []string{"analyze these files"}, contextResult, "", "test-provider", "test-model", "", "")
+	result, exitCode, err := app.Run(ctx, []string{"analyze these files"}, contextResult, "", "test-provider", "test-model", "", "", false, false)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 0, exitCode)
@@ -271,7 +271,7 @@ func TestApp_SyntheticMessageHistory_ComplexScenario(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, exitCode, err := app.Run(ctx, []string{"find security vulnerabilities"}, contextResult, "You are reviewing windmill plans", "test-provider", "test-model", "", "")
+	result, exitCode, err := app.Run(ctx, []string{"find security vulnerabilities"}, contextResult, "You are reviewing windmill plans", "test-provider", "test-model", "", "", false, false)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 0, exitCode)
@@ -317,7 +317,7 @@ func TestApp_SyntheticMessageHistory_EmptyContextFiles(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, exitCode, err := app.Run(ctx, []string{"process files"}, contextResult, "", "test-provider", "test-model", "", "")
+	result, exitCode, err := app.Run(ctx, []string{"process files"}, contextResult, "", "test-provider", "test-model", "", "", false, false)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 0, exitCode)
@@ -386,7 +386,7 @@ func TestApp_SyntheticMessageHistory_ManyContextFiles(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, exitCode, err := app.Run(ctx, []string{"summarize all files"}, contextResult, "", "test-provider", "test-model", "", "")
+	result, exitCode, err := app.Run(ctx, []string{"summarize all files"}, contextResult, "", "test-provider", "test-model", "", "", false, false)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 0, exitCode)
@@ -481,7 +481,7 @@ func TestApp_Run_CreateProvider_Error(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "nonexistent", "test-model", "", "")
+	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "nonexistent", "test-model", "", "", false, false)
 
 	assert.Error(t, err)
 	assert.Equal(t, 0, exitCode)
@@ -511,7 +511,7 @@ func TestApp_Run_Generate_Error(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "", "")
+	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "", "", false, false)
 
 	assert.Error(t, err)
 	assert.Equal(t, 0, exitCode)
@@ -532,7 +532,7 @@ func TestApp_Run_NoInput_Error(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, exitCode, err := app.Run(ctx, []string{}, createEmptyContextResult(), "", "mock", "test-model", "", "")
+	result, exitCode, err := app.Run(ctx, []string{}, createEmptyContextResult(), "", "mock", "test-model", "", "", false, false)
 
 	assert.Error(t, err)
 	assert.Equal(t, 0, exitCode)
@@ -544,7 +544,7 @@ func TestApp_Run_NilConfig_Error(t *testing.T) {
 	app := NewApp(nil, slog.Default(), false)
 
 	ctx := context.Background()
-	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "", "")
+	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "", "", false, false)
 
 	assert.Error(t, err)
 	assert.Equal(t, 0, exitCode)
@@ -583,7 +583,7 @@ func TestApp_Run_FormatEnhancement_JSON(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "", "")
+	result, exitCode, err := app.Run(ctx, []string{"test input"}, createEmptyContextResult(), "", "test-provider", "test-model", "", "", false, false)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 0, exitCode)
@@ -738,7 +738,7 @@ func TestApp_Run_WithMessageTemplate(t *testing.T) {
 	app := NewApp(cfg, slog.Default(), false)
 
 	ctx := context.Background()
-	result, exitCode, err := app.Run(ctx, []string{"function main() {}"}, createEmptyContextResult(), "", "test-provider", "test-model", "Please review: {input}", "")
+	result, exitCode, err := app.Run(ctx, []string{"function main() {}"}, createEmptyContextResult(), "", "test-provider", "test-model", "Please review: {input}", "", false, false)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 0, exitCode)

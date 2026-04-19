@@ -10,6 +10,7 @@ type GenerateOptions struct {
 	TopK          *int     // Limits token selection to top K candidates
 	RepeatPenalty *float64 // Penalty for repeating tokens (default: 1.1)
 	Seed          *int     // Random seed for deterministic generation
+	Think         *bool    // native think flag for structured reasoning
 }
 
 // GenerateOption configures Ollama-specific generation parameters
@@ -44,6 +45,15 @@ func WithRepeatPenalty(penalty float64) GenerateOption {
 func WithSeed(seed int) GenerateOption {
 	return func(c *GenerateOptions) {
 		c.Seed = &seed
+	}
+}
+
+// WithThink sets Ollama's native think flag. When modern models
+// return thinking content in a separate message.thinking field
+// the adapter routes to Message.Thinking
+func WithThink(think bool) GenerateOption {
+	return func(c *GenerateOptions) {
+		c.Think = &think
 	}
 }
 

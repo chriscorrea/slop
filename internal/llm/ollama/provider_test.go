@@ -342,3 +342,88 @@ func TestProviderInterface(t *testing.T) {
 		assert.Equal(t, "/api/chat", req.URL.Path)
 	})
 }
+
+// TestBuildOptions_Thinking verifies the cross-provider thinking level
+// translates into Ollama's native think flag
+func TestBuildOptions_Thinking(t *testing.T) {
+	provider := New()
+
+	tests := []struct {
+		name      string
+		level     string
+		wantThink *bool
+	}{
+		{name: "off is omitted", level: "off", wantThink: nil},
+		{name: "empty is omitted", level: "", wantThink: nil},
+		{name: "medium sets true", level: "medium", wantThink: boolPtr(true)},
+		{name: "high sets true", level: "high", wantThink: boolPtr(true)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Parameters: config.Parameters{Thinking: tt.level},
+			}
+			opts := provider.BuildOptions(cfg)
+			require := assert.New(t)
+			require.Len(opts, 1)
+			ollamaOpts, ok := opts[0].(*GenerateOptions)
+			require.True(ok)
+
+			if tt.wantThink == nil {
+				require.Nil(ollamaOpts.Think)
+			} else {
+				require.NotNil(ollamaOpts.Think)
+				require.Equal(*tt.wantThink, *ollamaOpts.Think)
+			}
+		})
+	}
+}
+
+// TestParseResponse_StructuredThinking confirms that Ollama's native
+// message.thinking is re-inlined as a <think> tag
+func TestParseResponse_StructuredThinking(t *testing.T) {
+	provider := New()
+	body := []byte(`{
+		"model": "gemma4:latest",
+		"done": true,
+		"message": {
+			"role": "assistant",
+			"content": "Four legs good, two legs bad.",
+			"thinking": "Boxer should work harder on the windmill."
+		},
+		"prompt_eval_count": 10,
+		"eval_count": 20
+	}`)
+
+	content, usage, err := provider.ParseResponse(body, slog.Default())
+	assert.NoError(t, err)
+	assert.NotNil(t, usage)
+	assert.Equal(t, 30, usage.TotalTokens)
+	assert.Equal(t,
+		"<think>Boxer should work harder on the windmill.</think>\nFour legs good, two legs bad.",
+		content,
+	)
+}
+
+// TestParseResponse_NoThinking confirms that when message.thinking is
+// empty, the response content passes through untouched.
+func TestParseResponse_NoThinking(t *testing.T) {
+	provider := New()
+	body := []byte(`{
+		"model": "gemma4:latest",
+		"done": true,
+		"message": {
+			"role": "assistant",
+			"content": "Four legs good, two legs bad."
+		}
+	}`)
+
+	content, _, err := provider.ParseResponse(body, slog.Default())
+	assert.NoError(t, err)
+	assert.Equal(t, "Four legs good, two legs bad.", content)
+}
+
+func boolPtr(b bool) *bool {
+	return &b
+}

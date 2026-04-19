@@ -1,5 +1,7 @@
 package common
 
+import "fmt"
+
 // GenerateOptions contains near-universal generation parameters
 // this follows the interface segregation principle; providers only see relevant options
 type GenerateOptions struct {
@@ -15,6 +17,39 @@ type GenerateOptions struct {
 	// function calling - expect to become standard across providers
 	Tools      []ToolConfig // available tools/functions
 	ToolChoice interface{}  // tool selection strategy
+
+	// Thinking / reasoning effort — translated by each provider adapter into
+	// its upstream native parameter
+	Thinking ThinkingLevel
+}
+
+// ThinkingLevel expresses how much reasoning the model should do. Adapters
+// translate this into their provider-specific native parameter.
+type ThinkingLevel int
+
+const (
+	// ThinkingOff sends no thinking hint and model behaves as normal
+	ThinkingOff ThinkingLevel = iota
+	// ThinkingMedium asks the model for moderate reasoning effort
+	ThinkingMedium
+	// ThinkingHigh asks the model for maximum reasoning effort
+	ThinkingHigh
+)
+
+// ParseThinkingLevel converts a string (e.g. from config or a flag) into a
+// ThinkingLevel. Unknown values return an error so callers can surface a
+// clear message at config-load time rather than at request time
+func ParseThinkingLevel(s string) (ThinkingLevel, error) {
+	switch s {
+	case "", "off":
+		return ThinkingOff, nil
+	case "medium":
+		return ThinkingMedium, nil
+	case "high":
+		return ThinkingHigh, nil
+	default:
+		return ThinkingOff, fmt.Errorf("invalid thinking level %q: expected off|medium|high", s)
+	}
 }
 
 // ToolConfig represents a tool/function definition for function calling
@@ -84,6 +119,15 @@ func WithResponseFormat(format *ResponseFormat) GenerateOption {
 func WithJSONFormat() GenerateOption {
 	return func(c *GenerateOptions) {
 		c.ResponseFormat = &ResponseFormat{Type: "json_object"}
+	}
+}
+
+// WithThinking sets the requested reasoning effort. Adapters translate this
+// into their provider-specific native parameter
+// If provider/model doesn't support, silently no-op/ignore the request
+func WithThinking(level ThinkingLevel) GenerateOption {
+	return func(c *GenerateOptions) {
+		c.Thinking = level
 	}
 }
 

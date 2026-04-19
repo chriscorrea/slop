@@ -160,6 +160,9 @@ var rootCmd = &cobra.Command{
 			"timeout":        "parameters.timeout",
 			"test":           "test",
 			"exit-code":      "exit_code_map",
+			"hide-thinking":  "hide_thinking",
+			"show-thinking":  "show_thinking",
+			"thinking":       "parameters.thinking",
 		}
 
 		// bind each flag to corresponding Viper key
@@ -243,11 +246,19 @@ func init() {
 	rootCmd.PersistentFlags().Bool("pass-fail", false, "Exit with code 30 (pass) or 31 (fail)")
 	rootCmd.PersistentFlags().String("exit-code", "", "Apply a custom exit code map from your config")
 
+	// thinking (or 'reasoning') output control flags (mutually exclusive)
+	rootCmd.PersistentFlags().Bool("hide-thinking", true, "Hide thinking content from model outputs (default)")
+	rootCmd.PersistentFlags().Bool("show-thinking", false, "Show thinking/reasoning content")
+
+	// thinking/reasoning control (off|medium|high)
+	rootCmd.PersistentFlags().StringP("thinking", "t", "off", "Request model reasoning effort: off|medium|high")
+
 	// mark the mutually exclusive flags
 	rootCmd.MarkFlagsMutuallyExclusive("fast", "deep")
 	rootCmd.MarkFlagsMutuallyExclusive("local", "remote")
 	rootCmd.MarkFlagsMutuallyExclusive("json", "jsonl", "yaml", "md", "xml")
 	rootCmd.MarkFlagsMutuallyExclusive("sentiment", "pass-fail", "exit-code")
+	rootCmd.MarkFlagsMutuallyExclusive("hide-thinking", "show-thinking")
 
 	// list of flags to hide for now
 	flagsToHide := []string{"test", "stream"}
@@ -255,7 +266,7 @@ func init() {
 	for _, flagName := range flagsToHide {
 		err := rootCmd.PersistentFlags().MarkHidden(flagName)
 		if err != nil {
-			// this shouldn't happen in production, but it's good practice to catch? ¯\_(ツ)_/¯
+			// this shouldn't happen in production, but it's good practice to catch?
 			panic(err)
 		}
 	}
@@ -304,6 +315,22 @@ func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextRe
 		return fmt.Errorf("failed to get verbose flag: %w", err)
 	}
 
+	// get thinking filter flags
+	hideThinking, err := cmd.Flags().GetBool("hide-thinking")
+	if err != nil {
+		return fmt.Errorf("failed to get hide-thinking flag: %w", err)
+	}
+	showThinking, err := cmd.Flags().GetBool("show-thinking")
+	if err != nil {
+		return fmt.Errorf("failed to get show-thinking flag: %w", err)
+	}
+
+	// handle mutual exclusivity with default values
+	// if show-thinking is explicitly set, override hide-thinking's default
+	if cmd.Flags().Changed("show-thinking") && showThinking {
+		hideThinking = false
+	}
+
 	// show command usage information if requested
 	if showCommandInfo {
 		if cmdConfig, exists := cfg.Commands[commandName]; exists {
@@ -324,6 +351,8 @@ func executeApp(cmd *cobra.Command, args []string, cfg *config.Config, contextRe
 		modelName,
 		messageTemplate,
 		exitMode,
+		hideThinking,
+		showThinking,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run app: %w", err)

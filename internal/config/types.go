@@ -25,6 +25,10 @@ type Parameters struct {
 	DefaultModelType string `mapstructure:"default_model_type"` // "fast" or "deep"
 	DefaultLocation  string `mapstructure:"default_location"`   // "local" or "remote"
 
+	// thinking / reasoning effort — "off", "medium", or "high".
+	// translated by each provider adapter into its upstream native parameter.
+	Thinking string `mapstructure:"thinking"`
+
 	// application behavior
 	Timeout    int `mapstructure:"timeout"`
 	MaxRetries int `mapstructure:"max_retries"`
