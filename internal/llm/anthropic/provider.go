@@ -15,6 +15,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/chriscorrea/slop/internal/config"
@@ -182,6 +184,72 @@ func defaultMaxTokens(modelID string) int {
 	return maxTokensDefault
 }
 
+// anthropicVersionRE captures a trailing -<major>-<minor> suffix where the
+// minor is one or two digits. that excludes 4.0-era date snapshots like
+// claude-sonnet-4-20250514, whose minor component is an eight-digit date
+var anthropicVersionRE = regexp.MustCompile(`-(\d+)-(\d{1,2})(?:-|$)`)
+
+// parseAnthropicVersion extracts the major.minor from a Claude model id,
+// or returns ok=false if no standard version suffix is detectable
+func parseAnthropicVersion(modelID string) (major, minor int, ok bool) {
+	m := anthropicVersionRE.FindStringSubmatch(strings.ToLower(modelID))
+	if m == nil {
+		return 0, 0, false
+	}
+	maj, err1 := strconv.Atoi(m[1])
+	min, err2 := strconv.Atoi(m[2])
+	if err1 != nil || err2 != nil {
+		return 0, 0, false
+	}
+	return maj, min, true
+}
+
+// useAdaptiveThinking reports whether a model accepts Anthropic's adaptive
+// thinking shape. 4.6 and later use adaptive+effort; 4.5 and earlier stay
+// on the enabled+budget_tokens shape
+func useAdaptiveThinking(modelID string) bool {
+	major, minor, ok := parseAnthropicVersion(modelID)
+	if !ok {
+		return false
+	}
+	return major > 4 || (major == 4 && minor >= 6)
+}
+
+// supportsMaxEffort reports whether a model accepts effort="max". per
+// Anthropic's docs, max is available on Opus 4.6, Opus 4.7, Sonnet 4.6,
+// and the Mythos preview family. other adaptive models top out at "high"
+func supportsMaxEffort(modelID string) bool {
+	id := strings.ToLower(modelID)
+	switch {
+	case strings.HasPrefix(id, "claude-opus-4-6"):
+		return true
+	case strings.HasPrefix(id, "claude-opus-4-7"):
+		return true
+	case strings.HasPrefix(id, "claude-sonnet-4-6"):
+		return true
+	case strings.HasPrefix(id, "claude-mythos"):
+		return true
+	}
+	return false
+}
+
+// effortForLevel maps slop's ThinkingLevel onto Anthropic's adaptive
+// effort string. ThinkingHigh upgrades to "max" on models that support it,
+// otherwise it falls back to "high"
+func effortForLevel(level common.ThinkingLevel, maxOK bool) string {
+	switch level {
+	case common.ThinkingHigh:
+		if maxOK {
+			return "max"
+		}
+		return "high"
+	case common.ThinkingMedium:
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
 // BuildRequest creates an Anthropic-specific request from messages and options
 func (p *Provider) BuildRequest(messages []common.Message, modelName string, options interface{}, logger *slog.Logger) (interface{}, error) {
 	// convert options to Anthropic-specific options
@@ -253,33 +321,46 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 		requestBody.StopSequences = config.StopSequences
 	}
 
-	// extended thinking: only emit on models that accept it. silent
-	// no-op for unsupported models so a user's default config survives
-	// switching to, say, haiku
-	if config.Thinking != common.ThinkingOff && supportsThinking(modelName) {
-		budget := config.ThinkingBudget
-		if budget <= 0 {
-			budget = thinkingBudget(config.Thinking)
-		}
-		requestBody.Thinking = &ThinkingConfig{
-			Type:         "enabled",
-			BudgetTokens: budget,
-		}
-
-		// Anthropic requires max_tokens > budget_tokens. bump the ceiling
-		// when the caller's value is too tight so --thinking high still
-		// has room to deliver an answer on top of its reasoning tokens
-		if requestBody.MaxTokens <= budget {
-			adjusted := budget + maxTokensDefault
-			if logger != nil {
-				logger.Debug("adjusting max_tokens to satisfy thinking budget",
-					"model", modelName,
-					"budget_tokens", budget,
-					"original_max_tokens", requestBody.MaxTokens,
-					"adjusted_max_tokens", adjusted,
-				)
+	// extended thinking. the shape depends on the model:
+	//   4.6+ — always send adaptive+effort (off maps to low, so the model
+	//          may still skip thinking on simple prompts)
+	//   4.5- — only send enabled+budget_tokens when the user asked for
+	//          medium or high; off stays literal (no block at all)
+	// unsupported models silently no-op so a default --thinking setting
+	// survives switching to something like haiku
+	if supportsThinking(modelName) {
+		if useAdaptiveThinking(modelName) {
+			requestBody.Thinking = &ThinkingConfig{
+				Type:   "adaptive",
+				Effort: effortForLevel(config.Thinking, supportsMaxEffort(modelName)),
 			}
-			requestBody.MaxTokens = adjusted
+			// adaptive auto-manages tokens; no max_tokens bump needed
+		} else if config.Thinking != common.ThinkingOff {
+			budget := config.ThinkingBudget
+			if budget <= 0 {
+				budget = thinkingBudget(config.Thinking)
+			}
+			requestBody.Thinking = &ThinkingConfig{
+				Type:         "enabled",
+				BudgetTokens: budget,
+			}
+
+			// Anthropic requires max_tokens > budget_tokens on the legacy
+			// shape. bump the ceiling when the caller's value is too tight
+			// so --thinking high still has room to deliver an answer on top
+			// of its reasoning tokens
+			if requestBody.MaxTokens <= budget {
+				adjusted := budget + maxTokensDefault
+				if logger != nil {
+					logger.Debug("adjusting max_tokens to satisfy thinking budget",
+						"model", modelName,
+						"budget_tokens", budget,
+						"original_max_tokens", requestBody.MaxTokens,
+						"adjusted_max_tokens", adjusted,
+					)
+				}
+				requestBody.MaxTokens = adjusted
+			}
 		}
 	}
 

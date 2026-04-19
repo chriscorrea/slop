@@ -696,37 +696,40 @@ func TestDefaultMaxTokens(t *testing.T) {
 	}
 }
 
-// TestBuildRequest_Thinking covers the cross-provider ThinkingLevel →
-// Anthropic thinking-block translation, including the model id gate and
-// the max_tokens/budget_tokens constraint.
+// TestBuildRequest_Thinking covers the legacy enabled+budget_tokens path
+// used for 4.5 and earlier Claude models. Model ids are pinned to 4.5 so
+// the adaptive routing doesn't intercept these cases.
 func TestBuildRequest_Thinking(t *testing.T) {
 	provider := New()
 	messages := []common.Message{
 		{Role: "user", Content: "Why does Boxer trust Napoleon?"},
 	}
 
-	t.Run("high on sonnet 4.6 sets budget 16000 and bumps max_tokens", func(t *testing.T) {
+	t.Run("high on sonnet 4.5 sets budget 16000 and bumps max_tokens", func(t *testing.T) {
 		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
-		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
 		require.NoError(t, err)
 		msgReq, ok := req.(*MessagesRequest)
 		require.True(t, ok)
 		require.NotNil(t, msgReq.Thinking)
 		assert.Equal(t, "enabled", msgReq.Thinking.Type)
 		assert.Equal(t, 16000, msgReq.Thinking.BudgetTokens)
+		assert.Empty(t, msgReq.Thinking.Effort)
 		// sonnet 4 default is 16384; budget is 16000 so default already
 		// clears the constraint without adjustment
 		assert.GreaterOrEqual(t, msgReq.MaxTokens, msgReq.Thinking.BudgetTokens+1)
 	})
 
-	t.Run("medium on opus 4.7 sets budget 4000", func(t *testing.T) {
+	t.Run("medium on opus 4.5 sets budget 4000", func(t *testing.T) {
 		opts := NewGenerateOptions(WithThinking(common.ThinkingMedium))
-		req, err := provider.BuildRequest(messages, "claude-opus-4-7", opts, slog.Default())
+		req, err := provider.BuildRequest(messages, "claude-opus-4-5", opts, slog.Default())
 		require.NoError(t, err)
 		msgReq, ok := req.(*MessagesRequest)
 		require.True(t, ok)
 		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "enabled", msgReq.Thinking.Type)
 		assert.Equal(t, 4000, msgReq.Thinking.BudgetTokens)
+		assert.Empty(t, msgReq.Thinking.Effort)
 	})
 
 	t.Run("high on haiku does not emit thinking", func(t *testing.T) {
@@ -738,16 +741,203 @@ func TestBuildRequest_Thinking(t *testing.T) {
 		assert.Nil(t, msgReq.Thinking)
 	})
 
-	t.Run("off omits thinking block on a thinking-capable model", func(t *testing.T) {
+	t.Run("off omits thinking block on a 4.5 model", func(t *testing.T) {
 		opts := NewGenerateOptions(WithThinking(common.ThinkingOff))
-		req, err := provider.BuildRequest(messages, "claude-opus-4-7", opts, slog.Default())
+		req, err := provider.BuildRequest(messages, "claude-opus-4-5", opts, slog.Default())
 		require.NoError(t, err)
 		msgReq, ok := req.(*MessagesRequest)
 		require.True(t, ok)
 		assert.Nil(t, msgReq.Thinking)
 	})
 
-	t.Run("tight max_tokens bumped above budget", func(t *testing.T) {
+	t.Run("tight max_tokens bumped above budget on 4.5", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingHigh),
+			WithMaxTokens(2048),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, 16000, msgReq.Thinking.BudgetTokens)
+		assert.Equal(t, 16000+maxTokensDefault, msgReq.MaxTokens)
+	})
+
+	t.Run("custom thinking budget is honored on 4.5", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingMedium),
+			WithThinkingBudget(8000),
+		)
+		req, err := provider.BuildRequest(messages, "claude-opus-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, 8000, msgReq.Thinking.BudgetTokens)
+	})
+}
+
+// TestParseAnthropicVersion covers the version-suffix regex, including the
+// distinction between "-4-6" (parseable) and "-4-20250514" (date stamp).
+func TestParseAnthropicVersion(t *testing.T) {
+	tests := []struct {
+		name      string
+		modelID   string
+		wantMajor int
+		wantMinor int
+		wantOK    bool
+	}{
+		{name: "sonnet 4.6", modelID: "claude-sonnet-4-6", wantMajor: 4, wantMinor: 6, wantOK: true},
+		{name: "opus 4.7", modelID: "claude-opus-4-7", wantMajor: 4, wantMinor: 7, wantOK: true},
+		{name: "sonnet 4.5", modelID: "claude-sonnet-4-5", wantMajor: 4, wantMinor: 5, wantOK: true},
+		{name: "sonnet 4.6 with date suffix", modelID: "claude-sonnet-4-6-20260101", wantMajor: 4, wantMinor: 6, wantOK: true},
+		{name: "4.0-era date snapshot", modelID: "claude-sonnet-4-20250514", wantOK: false},
+		{name: "3-7-sonnet dated", modelID: "claude-3-7-sonnet-20241022", wantMajor: 3, wantMinor: 7, wantOK: true},
+		{name: "haiku 4.5", modelID: "claude-haiku-4-5", wantMajor: 4, wantMinor: 5, wantOK: true},
+		{name: "non-claude id", modelID: "gpt-5", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			major, minor, ok := parseAnthropicVersion(tt.modelID)
+			assert.Equal(t, tt.wantOK, ok)
+			if tt.wantOK {
+				assert.Equal(t, tt.wantMajor, major)
+				assert.Equal(t, tt.wantMinor, minor)
+			}
+		})
+	}
+}
+
+// TestUseAdaptiveThinking verifies the 4.6+ routing gate.
+func TestUseAdaptiveThinking(t *testing.T) {
+	tests := []struct {
+		name    string
+		modelID string
+		want    bool
+	}{
+		{name: "sonnet 4.6", modelID: "claude-sonnet-4-6", want: true},
+		{name: "opus 4.7", modelID: "claude-opus-4-7", want: true},
+		{name: "sonnet 4.5", modelID: "claude-sonnet-4-5", want: false},
+		{name: "opus 4.0", modelID: "claude-opus-4-0", want: false},
+		{name: "3-7-sonnet", modelID: "claude-3-7-sonnet-20241022", want: false},
+		{name: "haiku 4.5", modelID: "claude-haiku-4-5", want: false},
+		{name: "date-snapshot 4.0 era", modelID: "claude-sonnet-4-20250514", want: false},
+		{name: "non-claude", modelID: "gpt-5", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, useAdaptiveThinking(tt.modelID))
+		})
+	}
+}
+
+// TestSupportsMaxEffort verifies the allowlist for the max effort tier.
+func TestSupportsMaxEffort(t *testing.T) {
+	tests := []struct {
+		name    string
+		modelID string
+		want    bool
+	}{
+		{name: "opus 4.6 max-capable", modelID: "claude-opus-4-6", want: true},
+		{name: "opus 4.7 max-capable", modelID: "claude-opus-4-7", want: true},
+		{name: "sonnet 4.6 max-capable", modelID: "claude-sonnet-4-6", want: true},
+		{name: "mythos preview max-capable", modelID: "claude-mythos-preview", want: true},
+		{name: "sonnet 4.7 hypothetical falls back", modelID: "claude-sonnet-4-7", want: false},
+		{name: "haiku 4.6 hypothetical falls back", modelID: "claude-haiku-4-6", want: false},
+		{name: "sonnet 4.5 not max", modelID: "claude-sonnet-4-5", want: false},
+		{name: "non-claude not max", modelID: "gpt-5", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, supportsMaxEffort(tt.modelID))
+		})
+	}
+}
+
+// TestEffortForLevel covers the tri-state effort mapping with and without
+// max-effort support.
+func TestEffortForLevel(t *testing.T) {
+	tests := []struct {
+		name  string
+		level common.ThinkingLevel
+		maxOK bool
+		want  string
+	}{
+		{name: "off regardless of maxOK", level: common.ThinkingOff, maxOK: true, want: "low"},
+		{name: "off on non-max", level: common.ThinkingOff, maxOK: false, want: "low"},
+		{name: "medium regardless of maxOK", level: common.ThinkingMedium, maxOK: true, want: "medium"},
+		{name: "medium on non-max", level: common.ThinkingMedium, maxOK: false, want: "medium"},
+		{name: "high upgrades to max when allowed", level: common.ThinkingHigh, maxOK: true, want: "max"},
+		{name: "high falls back to high when not allowed", level: common.ThinkingHigh, maxOK: false, want: "high"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, effortForLevel(tt.level, tt.maxOK))
+		})
+	}
+}
+
+// TestBuildRequest_ThinkingAdaptive covers the 4.6+ adaptive path: the
+// thinking block carries type=adaptive plus an effort string (never a
+// budget_tokens value), and max_tokens is not bumped because adaptive
+// self-manages its reasoning budget.
+func TestBuildRequest_ThinkingAdaptive(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "Explain the windmill's collapse."},
+	}
+
+	t.Run("high on sonnet 4.6 maps to max", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
+		assert.Equal(t, "max", msgReq.Thinking.Effort)
+		assert.Equal(t, 0, msgReq.Thinking.BudgetTokens)
+	})
+
+	t.Run("high on opus 4.7 maps to max", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
+		req, err := provider.BuildRequest(messages, "claude-opus-4-7", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
+		assert.Equal(t, "max", msgReq.Thinking.Effort)
+	})
+
+	t.Run("medium on sonnet 4.6 maps to medium", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingMedium))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
+		assert.Equal(t, "medium", msgReq.Thinking.Effort)
+	})
+
+	t.Run("off on sonnet 4.6 still sends adaptive with low effort", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingOff))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
+		assert.Equal(t, "low", msgReq.Thinking.Effort)
+	})
+
+	t.Run("adaptive does not bump max_tokens on tight setting", func(t *testing.T) {
 		opts := NewGenerateOptions(
 			WithThinking(common.ThinkingHigh),
 			WithMaxTokens(2048),
@@ -757,21 +947,20 @@ func TestBuildRequest_Thinking(t *testing.T) {
 		msgReq, ok := req.(*MessagesRequest)
 		require.True(t, ok)
 		require.NotNil(t, msgReq.Thinking)
-		assert.Equal(t, 16000, msgReq.Thinking.BudgetTokens)
-		assert.Equal(t, 16000+maxTokensDefault, msgReq.MaxTokens)
+		assert.Equal(t, 2048, msgReq.MaxTokens)
 	})
 
-	t.Run("custom thinking budget is honored", func(t *testing.T) {
-		opts := NewGenerateOptions(
-			WithThinking(common.ThinkingMedium),
-			WithThinkingBudget(8000),
-		)
-		req, err := provider.BuildRequest(messages, "claude-opus-4-7", opts, slog.Default())
+	t.Run("high on adaptive-but-not-max falls back to high", func(t *testing.T) {
+		// hypothetical future sonnet past 4.6: adaptive routing kicks in
+		// (minor=7 >= 6) but the model is not in the max-effort allowlist
+		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-7", opts, slog.Default())
 		require.NoError(t, err)
 		msgReq, ok := req.(*MessagesRequest)
 		require.True(t, ok)
 		require.NotNil(t, msgReq.Thinking)
-		assert.Equal(t, 8000, msgReq.Thinking.BudgetTokens)
+		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
+		assert.Equal(t, "high", msgReq.Thinking.Effort)
 	})
 }
 

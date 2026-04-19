@@ -27,12 +27,14 @@ type MessagesRequest struct {
 	OutputConfig *OutputConfig `json:"output_config,omitempty"`
 }
 
-// ThinkingConfig wires Anthropic's extended-thinking block. Type is
-// "enabled" when set; budget_tokens bounds how many tokens the model
-// may spend on internal reasoning
+// ThinkingConfig wires Anthropic's extended-thinking block. BudgetTokens
+// is used with Type="enabled" on 4.5 and earlier; Effort is used with
+// Type="adaptive" on 4.6+ models. The two shapes are mutually exclusive
+// and omitempty lets each serialize cleanly.
 type ThinkingConfig struct {
 	Type         string `json:"type"`
-	BudgetTokens int    `json:"budget_tokens"`
+	BudgetTokens int    `json:"budget_tokens,omitempty"`
+	Effort       string `json:"effort,omitempty"`
 }
 
 // OutputConfig wraps Anthropic's structured-output envelope on the
