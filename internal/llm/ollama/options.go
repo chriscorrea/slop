@@ -11,6 +11,7 @@ type GenerateOptions struct {
 	RepeatPenalty *float64 // Penalty for repeating tokens (default: 1.1)
 	Seed          *int     // Random seed for deterministic generation
 	Think         *bool    // native think flag for structured reasoning
+	KeepAlive     *string  // how long Ollama keeps the model warm in RAM
 }
 
 // GenerateOption configures Ollama-specific generation parameters
@@ -54,6 +55,14 @@ func WithSeed(seed int) GenerateOption {
 func WithThink(think bool) GenerateOption {
 	return func(c *GenerateOptions) {
 		c.Think = &think
+	}
+}
+
+// WithKeepAlive tunes how long Ollama keeps the model warm in RAM after a
+// request. Accepts Go-style durations ("5m", "1h") or "0" to unload.
+func WithKeepAlive(s string) GenerateOption {
+	return func(c *GenerateOptions) {
+		c.KeepAlive = &s
 	}
 }
 

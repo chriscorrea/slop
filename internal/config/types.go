@@ -127,6 +127,9 @@ type Mistral struct {
 
 type Ollama struct {
 	BaseProvider `mapstructure:",squash"`
+	// KeepAlive controls how long Ollama keeps a model resident in RAM
+	// after the last request (e.g. "5m", "1h", or "0" to unload eagerly).
+	KeepAlive string `mapstructure:"keep_alive"`
 }
 
 type OpenAI struct {

@@ -74,11 +74,26 @@ func (p *Provider) BuildOptions(cfg *config.Config) []interface{} {
 		functionalOpts = append(functionalOpts, WithJSONFormat())
 	}
 
+	// populate ResponseFormat with the user's schema when supplied.
+	// Parameters.ResponseSchema is resolved to inline JSON at config-load
+	// time, so the raw bytes are ready for direct passthrough.
+	if cfg.Parameters.ResponseSchema != "" {
+		schemaOpt := common.WithSchema("response", []byte(cfg.Parameters.ResponseSchema))
+		functionalOpts = append(functionalOpts, func(o *GenerateOptions) {
+			schemaOpt(&o.GenerateOptions)
+		})
+	}
+
 	// translate the cross-provider thinking level into Ollama's native
 	// think flag. Silent no-op for ThinkingOff and unknown values, so a
 	// user's config default survives switching to a non-thinking model.
 	if level, err := common.ParseThinkingLevel(cfg.Parameters.Thinking); err == nil && level != common.ThinkingOff {
 		functionalOpts = append(functionalOpts, WithThink(true))
+	}
+
+	// pass through the provider-scoped keep_alive tuning when set
+	if cfg.Providers.Ollama.KeepAlive != "" {
+		functionalOpts = append(functionalOpts, WithKeepAlive(cfg.Providers.Ollama.KeepAlive))
 	}
 
 	return []interface{}{NewGenerateOptions(functionalOpts...)}
@@ -151,14 +166,28 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 		requestBody.Options = optionsMap
 	}
 
-	// handle structured output if requested
-	if config.ResponseFormat != nil && config.ResponseFormat.Type == "json_object" {
-		requestBody.Format = "json"
+	// handle structured output if requested. Ollama accepts either the
+	// literal string "json" for unconstrained JSON mode or a full JSON
+	// schema object; both go in the top-level format field
+	if config.ResponseFormat != nil {
+		switch config.ResponseFormat.Type {
+		case "json_object":
+			requestBody.Format = json.RawMessage(`"json"`)
+		case "json_schema":
+			if len(config.ResponseFormat.Schema) > 0 {
+				requestBody.Format = config.ResponseFormat.Schema
+			}
+		}
 	}
 
 	// wire the native think flag through to the API
 	if config.Think != nil {
 		requestBody.Think = config.Think
+	}
+
+	// wire keep_alive through so users can tune model residency in RAM
+	if config.KeepAlive != nil {
+		requestBody.KeepAlive = config.KeepAlive
 	}
 
 	return requestBody, nil
