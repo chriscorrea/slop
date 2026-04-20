@@ -705,7 +705,7 @@ func TestBuildRequest_Thinking(t *testing.T) {
 		{Role: "user", Content: "Why does Boxer trust Napoleon?"},
 	}
 
-	t.Run("high on sonnet 4.5 sets budget 16000 and bumps max_tokens", func(t *testing.T) {
+	t.Run("high on sonnet 4.5 sets budget 16000 and bumps max_tokens, no effort", func(t *testing.T) {
 		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
 		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
 		require.NoError(t, err)
@@ -714,13 +714,16 @@ func TestBuildRequest_Thinking(t *testing.T) {
 		require.NotNil(t, msgReq.Thinking)
 		assert.Equal(t, "enabled", msgReq.Thinking.Type)
 		assert.Equal(t, 16000, msgReq.Thinking.BudgetTokens)
-		assert.Empty(t, msgReq.Thinking.Effort)
 		// sonnet 4 default is 16384; budget is 16000 so default already
 		// clears the constraint without adjustment
 		assert.GreaterOrEqual(t, msgReq.MaxTokens, msgReq.Thinking.BudgetTokens+1)
+		// sonnet 4.5 isn't in the effort allowlist
+		if msgReq.OutputConfig != nil {
+			assert.Empty(t, msgReq.OutputConfig.Effort)
+		}
 	})
 
-	t.Run("medium on opus 4.5 sets budget 4000", func(t *testing.T) {
+	t.Run("medium on opus 4.5 sets budget 4000 and effort medium", func(t *testing.T) {
 		opts := NewGenerateOptions(WithThinking(common.ThinkingMedium))
 		req, err := provider.BuildRequest(messages, "claude-opus-4-5", opts, slog.Default())
 		require.NoError(t, err)
@@ -729,7 +732,9 @@ func TestBuildRequest_Thinking(t *testing.T) {
 		require.NotNil(t, msgReq.Thinking)
 		assert.Equal(t, "enabled", msgReq.Thinking.Type)
 		assert.Equal(t, 4000, msgReq.Thinking.BudgetTokens)
-		assert.Empty(t, msgReq.Thinking.Effort)
+		// opus 4.5 is in the effort allowlist even though it uses manual thinking
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "medium", msgReq.OutputConfig.Effort)
 	})
 
 	t.Run("high on haiku does not emit thinking", func(t *testing.T) {
@@ -741,13 +746,29 @@ func TestBuildRequest_Thinking(t *testing.T) {
 		assert.Nil(t, msgReq.Thinking)
 	})
 
-	t.Run("off omits thinking block on a 4.5 model", func(t *testing.T) {
+	t.Run("off omits thinking block on opus 4.5 but still sends low effort", func(t *testing.T) {
 		opts := NewGenerateOptions(WithThinking(common.ThinkingOff))
 		req, err := provider.BuildRequest(messages, "claude-opus-4-5", opts, slog.Default())
 		require.NoError(t, err)
 		msgReq, ok := req.(*MessagesRequest)
 		require.True(t, ok)
 		assert.Nil(t, msgReq.Thinking)
+		// opus 4.5 is in supportsEffort; off maps to low regardless of thinking
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "low", msgReq.OutputConfig.Effort)
+	})
+
+	t.Run("off on sonnet 4.5 emits neither thinking nor effort", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingOff))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		assert.Nil(t, msgReq.Thinking)
+		// sonnet 4.5 isn't in supportsEffort, so no OutputConfig is created
+		if msgReq.OutputConfig != nil {
+			assert.Empty(t, msgReq.OutputConfig.Effort)
+		}
 	})
 
 	t.Run("tight max_tokens bumped above budget on 4.5", func(t *testing.T) {
@@ -892,7 +913,7 @@ func TestBuildRequest_ThinkingAdaptive(t *testing.T) {
 		{Role: "user", Content: "Explain the windmill's collapse."},
 	}
 
-	t.Run("high on sonnet 4.6 maps to max", func(t *testing.T) {
+	t.Run("high on sonnet 4.6 maps to max on output_config", func(t *testing.T) {
 		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
 		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
 		require.NoError(t, err)
@@ -900,11 +921,12 @@ func TestBuildRequest_ThinkingAdaptive(t *testing.T) {
 		require.True(t, ok)
 		require.NotNil(t, msgReq.Thinking)
 		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
-		assert.Equal(t, "max", msgReq.Thinking.Effort)
 		assert.Equal(t, 0, msgReq.Thinking.BudgetTokens)
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "max", msgReq.OutputConfig.Effort)
 	})
 
-	t.Run("high on opus 4.7 maps to max", func(t *testing.T) {
+	t.Run("high on opus 4.7 maps to max on output_config", func(t *testing.T) {
 		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
 		req, err := provider.BuildRequest(messages, "claude-opus-4-7", opts, slog.Default())
 		require.NoError(t, err)
@@ -912,10 +934,11 @@ func TestBuildRequest_ThinkingAdaptive(t *testing.T) {
 		require.True(t, ok)
 		require.NotNil(t, msgReq.Thinking)
 		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
-		assert.Equal(t, "max", msgReq.Thinking.Effort)
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "max", msgReq.OutputConfig.Effort)
 	})
 
-	t.Run("medium on sonnet 4.6 maps to medium", func(t *testing.T) {
+	t.Run("medium on sonnet 4.6 maps to medium on output_config", func(t *testing.T) {
 		opts := NewGenerateOptions(WithThinking(common.ThinkingMedium))
 		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
 		require.NoError(t, err)
@@ -923,7 +946,8 @@ func TestBuildRequest_ThinkingAdaptive(t *testing.T) {
 		require.True(t, ok)
 		require.NotNil(t, msgReq.Thinking)
 		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
-		assert.Equal(t, "medium", msgReq.Thinking.Effort)
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "medium", msgReq.OutputConfig.Effort)
 	})
 
 	t.Run("off on sonnet 4.6 still sends adaptive with low effort", func(t *testing.T) {
@@ -934,7 +958,8 @@ func TestBuildRequest_ThinkingAdaptive(t *testing.T) {
 		require.True(t, ok)
 		require.NotNil(t, msgReq.Thinking)
 		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
-		assert.Equal(t, "low", msgReq.Thinking.Effort)
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "low", msgReq.OutputConfig.Effort)
 	})
 
 	t.Run("adaptive does not bump max_tokens on tight setting", func(t *testing.T) {
@@ -952,7 +977,9 @@ func TestBuildRequest_ThinkingAdaptive(t *testing.T) {
 
 	t.Run("high on adaptive-but-not-max falls back to high", func(t *testing.T) {
 		// hypothetical future sonnet past 4.6: adaptive routing kicks in
-		// (minor=7 >= 6) but the model is not in the max-effort allowlist
+		// (minor=7 >= 6) but the model is not in the max-effort allowlist.
+		// this also exercises the adaptive-thinking-without-effort branch
+		// since sonnet-4-7 isn't in supportsEffort either
 		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
 		req, err := provider.BuildRequest(messages, "claude-sonnet-4-7", opts, slog.Default())
 		require.NoError(t, err)
@@ -960,7 +987,10 @@ func TestBuildRequest_ThinkingAdaptive(t *testing.T) {
 		require.True(t, ok)
 		require.NotNil(t, msgReq.Thinking)
 		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
-		assert.Equal(t, "high", msgReq.Thinking.Effort)
+		// sonnet-4-7 isn't yet in supportsEffort, so no effort is sent
+		if msgReq.OutputConfig != nil {
+			assert.Empty(t, msgReq.OutputConfig.Effort)
+		}
 	})
 }
 
@@ -1134,4 +1164,104 @@ func TestBuildOptions_ThinkingAndSchema(t *testing.T) {
 	assert.JSONEq(t, schema, string(ga.ResponseFormat.Schema))
 	require.NotNil(t, ga.ResponseFormat.Strict)
 	assert.True(t, *ga.ResponseFormat.Strict)
+}
+
+// TestSupportsEffort covers the allowlist for the output_config.effort
+// parameter. note that opus 4.5 supports effort even though it uses the
+// manual (enabled+budget_tokens) thinking shape.
+func TestSupportsEffort(t *testing.T) {
+	tests := []struct {
+		name    string
+		modelID string
+		want    bool
+	}{
+		{name: "opus 4.5 supports effort", modelID: "claude-opus-4-5", want: true},
+		{name: "opus 4.6 supports effort", modelID: "claude-opus-4-6", want: true},
+		{name: "opus 4.7 supports effort", modelID: "claude-opus-4-7", want: true},
+		{name: "sonnet 4.6 supports effort", modelID: "claude-sonnet-4-6", want: true},
+		{name: "mythos preview supports effort", modelID: "claude-mythos-preview", want: true},
+		{name: "sonnet 4.5 does not support effort", modelID: "claude-sonnet-4-5", want: false},
+		{name: "haiku 4.5 does not support effort", modelID: "claude-haiku-4-5", want: false},
+		{name: "3-7-sonnet does not support effort", modelID: "claude-3-7-sonnet-20241022", want: false},
+		{name: "non-claude does not support effort", modelID: "gpt-5", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, supportsEffort(tt.modelID))
+		})
+	}
+}
+
+// TestBuildRequest_EffortOnOpus45 confirms that opus 4.5 gets both manual
+// thinking (enabled+budget_tokens) and output_config.effort together —
+// effort is independent of the adaptive-thinking routing.
+func TestBuildRequest_EffortOnOpus45(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "Describe Snowball's role on the farm."},
+	}
+
+	t.Run("medium emits manual thinking plus medium effort", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingMedium))
+		req, err := provider.BuildRequest(messages, "claude-opus-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "enabled", msgReq.Thinking.Type)
+		assert.Equal(t, 4000, msgReq.Thinking.BudgetTokens)
+
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "medium", msgReq.OutputConfig.Effort)
+		// no schema requested, so format stays nil
+		assert.Nil(t, msgReq.OutputConfig.Format)
+	})
+
+	t.Run("high on opus 4.5 falls back to high effort (max is 4.6+)", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
+		req, err := provider.BuildRequest(messages, "claude-opus-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "enabled", msgReq.Thinking.Type)
+		assert.Equal(t, 16000, msgReq.Thinking.BudgetTokens)
+
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "high", msgReq.OutputConfig.Effort)
+	})
+}
+
+// TestBuildRequest_EffortAndSchemaCoexist confirms that a request with
+// both a schema (WithSchema) and a thinking level populates both fields
+// of output_config: format for the schema, effort for the thinking lever.
+func TestBuildRequest_EffortAndSchemaCoexist(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "Return the windmill quote."},
+	}
+	schema := []byte(`{"type":"object","properties":{"quote":{"type":"string"}}}`)
+
+	opts := NewGenerateOptions(
+		WithThinking(common.ThinkingHigh),
+		WithSchema("animal_quote", schema),
+	)
+	req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+	require.NoError(t, err)
+	msgReq, ok := req.(*MessagesRequest)
+	require.True(t, ok)
+
+	require.NotNil(t, msgReq.Thinking)
+	assert.Equal(t, "adaptive", msgReq.Thinking.Type)
+
+	require.NotNil(t, msgReq.OutputConfig)
+	// both output_config fields are populated together
+	assert.Equal(t, "max", msgReq.OutputConfig.Effort)
+	require.NotNil(t, msgReq.OutputConfig.Format)
+	assert.Equal(t, "json_schema", msgReq.OutputConfig.Format.Type)
+	assert.Equal(t, "animal_quote", msgReq.OutputConfig.Format.Name)
+	assert.JSONEq(t, string(schema), string(msgReq.OutputConfig.Format.Schema))
 }

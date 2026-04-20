@@ -27,20 +27,22 @@ type MessagesRequest struct {
 	OutputConfig *OutputConfig `json:"output_config,omitempty"`
 }
 
-// ThinkingConfig wires Anthropic's extended-thinking block. BudgetTokens
-// is used with Type="enabled" on 4.5 and earlier; Effort is used with
-// Type="adaptive" on 4.6+ models. The two shapes are mutually exclusive
-// and omitempty lets each serialize cleanly.
+// ThinkingConfig wires Anthropic's extended-thinking block. Type is
+// "enabled" with a BudgetTokens ceiling on 4.5 and earlier; Type is
+// "adaptive" (no budget) on 4.6+. Effort for adaptive routing lives on
+// OutputConfig, not here
 type ThinkingConfig struct {
 	Type         string `json:"type"`
 	BudgetTokens int    `json:"budget_tokens,omitempty"`
-	Effort       string `json:"effort,omitempty"`
 }
 
 // OutputConfig wraps Anthropic's structured-output envelope on the
-// Messages API. Format carries the schema and its metadata
+// Messages API. Format carries the schema and its metadata; Effort
+// controls token spend on models that support it (low/medium/high/max).
+// Both fields may be set together
 type OutputConfig struct {
 	Format *OutputFormat `json:"format,omitempty"`
+	Effort string        `json:"effort,omitempty"`
 }
 
 // OutputFormat describes a single structured-output format. For

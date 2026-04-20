@@ -215,6 +215,27 @@ func useAdaptiveThinking(modelID string) bool {
 	return major > 4 || (major == 4 && minor >= 6)
 }
 
+// supportsEffort reports whether a model accepts the output_config.effort
+// parameter. per Anthropic's docs: Mythos Preview, Opus 4.5, Opus 4.6,
+// Opus 4.7, and Sonnet 4.6. note that Opus 4.5 supports effort even
+// though it uses manual (enabled+budget_tokens) thinking
+func supportsEffort(modelID string) bool {
+	id := strings.ToLower(modelID)
+	switch {
+	case strings.HasPrefix(id, "claude-opus-4-5"):
+		return true
+	case strings.HasPrefix(id, "claude-opus-4-6"):
+		return true
+	case strings.HasPrefix(id, "claude-opus-4-7"):
+		return true
+	case strings.HasPrefix(id, "claude-sonnet-4-6"):
+		return true
+	case strings.HasPrefix(id, "claude-mythos"):
+		return true
+	}
+	return false
+}
+
 // supportsMaxEffort reports whether a model accepts effort="max". per
 // Anthropic's docs, max is available on Opus 4.6, Opus 4.7, Sonnet 4.6,
 // and the Mythos preview family. other adaptive models top out at "high"
@@ -321,19 +342,17 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 		requestBody.StopSequences = config.StopSequences
 	}
 
-	// extended thinking. the shape depends on the model:
-	//   4.6+ — always send adaptive+effort (off maps to low, so the model
-	//          may still skip thinking on simple prompts)
-	//   4.5- — only send enabled+budget_tokens when the user asked for
-	//          medium or high; off stays literal (no block at all)
+	// extended thinking block. the shape depends on the model:
+	//   4.6+ — adaptive (no budget); the output_config.effort lever below
+	//          steers depth, so we skip the thinking block only when the
+	//          model doesn't support thinking at all
+	//   4.5- — enabled+budget_tokens when the user asked for medium/high;
+	//          off stays literal (no block at all)
 	// unsupported models silently no-op so a default --thinking setting
 	// survives switching to something like haiku
 	if supportsThinking(modelName) {
 		if useAdaptiveThinking(modelName) {
-			requestBody.Thinking = &ThinkingConfig{
-				Type:   "adaptive",
-				Effort: effortForLevel(config.Thinking, supportsMaxEffort(modelName)),
-			}
+			requestBody.Thinking = &ThinkingConfig{Type: "adaptive"}
 			// adaptive auto-manages tokens; no max_tokens bump needed
 		} else if config.Thinking != common.ThinkingOff {
 			budget := config.ThinkingBudget
@@ -364,17 +383,29 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 		}
 	}
 
+	// effort lever on output_config. the allowlist is independent of
+	// supportsThinking — Opus 4.5 uses manual thinking but still accepts
+	// effort, and Mythos supports effort with adaptive-by-default
+	if supportsEffort(modelName) {
+		if requestBody.OutputConfig == nil {
+			requestBody.OutputConfig = &OutputConfig{}
+		}
+		requestBody.OutputConfig.Effort = effortForLevel(config.Thinking, supportsMaxEffort(modelName))
+	}
+
 	// structured output: wrap json_schema requests in Anthropic's
 	// output_config envelope. non-schema formats (e.g. json_object) fall
-	// through unchanged — Anthropic doesn't have a parallel for those
+	// through unchanged — Anthropic doesn't have a parallel for those.
+	// merge onto the existing OutputConfig so an effort setting survives
 	if rf := config.ResponseFormat; rf != nil && rf.Type == "json_schema" && len(rf.Schema) > 0 {
-		requestBody.OutputConfig = &OutputConfig{
-			Format: &OutputFormat{
-				Type:   "json_schema",
-				Name:   rf.Name,
-				Schema: rf.Schema,
-				Strict: rf.Strict,
-			},
+		if requestBody.OutputConfig == nil {
+			requestBody.OutputConfig = &OutputConfig{}
+		}
+		requestBody.OutputConfig.Format = &OutputFormat{
+			Type:   "json_schema",
+			Name:   rf.Name,
+			Schema: rf.Schema,
+			Strict: rf.Strict,
 		}
 	}
 
