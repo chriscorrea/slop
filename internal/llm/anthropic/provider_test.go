@@ -1265,3 +1265,84 @@ func TestBuildRequest_EffortAndSchemaCoexist(t *testing.T) {
 	assert.Equal(t, "animal_quote", msgReq.OutputConfig.Format.Name)
 	assert.JSONEq(t, string(schema), string(msgReq.OutputConfig.Format.Schema))
 }
+
+// TestBuildRequest_TemperatureForcedWhenThinking confirms Anthropic's
+// requirement that temperature=1 whenever the thinking block is present,
+// regardless of what temperature the caller set. Also confirms that
+// temperature passes through unchanged when thinking is not active.
+func TestBuildRequest_TemperatureForcedWhenThinking(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "Consider the windmill's collapse."},
+	}
+
+	t.Run("adaptive on sonnet 4.6 forces temperature 1 over caller's 0.7", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingHigh),
+			WithTemperature(0.7),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.Temperature)
+		assert.Equal(t, 1.0, *msgReq.Temperature)
+	})
+
+	t.Run("enabled on sonnet 4.5 forces temperature 1", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingMedium),
+			WithTemperature(0.2),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.Temperature)
+		assert.Equal(t, 1.0, *msgReq.Temperature)
+	})
+
+	t.Run("adaptive on sonnet 4.6 with no caller temp still sets 1", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingMedium))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.Temperature)
+		assert.Equal(t, 1.0, *msgReq.Temperature)
+	})
+
+	t.Run("off on sonnet 4.5 preserves caller temperature", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingOff),
+			WithTemperature(0.3),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		// sonnet 4.5 + off sends no thinking block, so caller's temperature wins
+		assert.Nil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.Temperature)
+		assert.Equal(t, 0.3, *msgReq.Temperature)
+	})
+
+	t.Run("haiku with thinking-high never gets a thinking block or forced temp", func(t *testing.T) {
+		// haiku is outside supportsThinking so the thinking block is never
+		// set; caller's temperature passes through untouched
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingHigh),
+			WithTemperature(0.4),
+		)
+		req, err := provider.BuildRequest(messages, "claude-haiku-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		assert.Nil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.Temperature)
+		assert.Equal(t, 0.4, *msgReq.Temperature)
+	})
+}

@@ -393,6 +393,21 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 		requestBody.OutputConfig.Effort = effortForLevel(config.Thinking, supportsMaxEffort(modelName))
 	}
 
+	// Anthropic only accepts temperature=1 whenever the thinking block is
+	// present (adaptive or enabled). override a caller-set value with a
+	// debug log so a --temperature 0.7 default survives switching models
+	// that don't use thinking
+	if requestBody.Thinking != nil {
+		if requestBody.Temperature != nil && *requestBody.Temperature != 1 && logger != nil {
+			logger.Debug("overriding temperature to 1 for extended thinking",
+				"model", modelName,
+				"original_temperature", *requestBody.Temperature,
+			)
+		}
+		one := 1.0
+		requestBody.Temperature = &one
+	}
+
 	// structured output: wrap json_schema requests in Anthropic's
 	// output_config envelope. non-schema formats (e.g. json_object) fall
 	// through unchanged — Anthropic doesn't have a parallel for those.
