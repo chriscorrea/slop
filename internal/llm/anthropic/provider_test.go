@@ -174,7 +174,7 @@ func TestProvider_BuildRequest(t *testing.T) {
 				Model:     modelName,
 				Messages:  []common.Message{{Role: "user", Content: "Can you not understand that liberty is worth more than just ribbons?"}},
 				System:    "You are a helpful assistant.",
-				MaxTokens: 1024,
+				MaxTokens: maxTokensDefault,
 				Stream:    common.BoolPtr(false),
 			},
 		},
@@ -204,7 +204,7 @@ func TestProvider_BuildRequest(t *testing.T) {
 				Model:     modelName,
 				Messages:  []common.Message{{Role: "user", Content: "Can you not understand that liberty is worth more than just ribbons?"}},
 				System:    "You are a helpful assistant.",
-				MaxTokens: 1024,
+				MaxTokens: maxTokensDefault,
 				Stream:    common.BoolPtr(false),
 			},
 		},
@@ -641,4 +641,753 @@ func TestProvider_Integration(t *testing.T) {
 	content, err := client.Generate(context.Background(), messages, "claude-3-5-sonnet-latest")
 	require.NoError(t, err)
 	assert.Equal(t, "test response", content)
+}
+
+// TestSupportsThinking verifies the model id allowlist that drives
+// whether BuildRequest emits Anthropic's extended-thinking block.
+func TestSupportsThinking(t *testing.T) {
+	tests := []struct {
+		name    string
+		modelID string
+		want    bool
+	}{
+		{name: "sonnet 4.6 supports", modelID: "claude-sonnet-4-6", want: true},
+		{name: "sonnet 4 latest supports", modelID: "claude-sonnet-4-latest", want: true},
+		{name: "opus 4.7 supports", modelID: "claude-opus-4-7", want: true},
+		{name: "opus 4.0 supports", modelID: "claude-opus-4-0", want: true},
+		{name: "3-7 sonnet supports", modelID: "claude-3-7-sonnet-latest", want: true},
+		{name: "haiku 3 does not", modelID: "claude-3-haiku-20240307", want: false},
+		{name: "haiku 4.5 does not", modelID: "claude-haiku-4-5", want: false},
+		{name: "3-5 sonnet does not", modelID: "claude-3-5-sonnet-latest", want: false},
+		{name: "empty does not", modelID: "", want: false},
+		{name: "unknown does not", modelID: "snowball-1.0", want: false},
+		{name: "uppercase opus still supports", modelID: "CLAUDE-OPUS-4-7", want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, supportsThinking(tt.modelID))
+		})
+	}
+}
+
+// TestDefaultMaxTokens covers the per-model fallback used when the caller
+// hasn't set MaxTokens. Sonnet 4 and Opus 4 families get larger budgets so
+// the windmill has room to stand; everything else gets the modest default.
+func TestDefaultMaxTokens(t *testing.T) {
+	tests := []struct {
+		name    string
+		modelID string
+		want    int
+	}{
+		{name: "sonnet 4.6", modelID: "claude-sonnet-4-6", want: maxTokensSonnetFamily4},
+		{name: "sonnet 4.0", modelID: "claude-sonnet-4-0", want: maxTokensSonnetFamily4},
+		{name: "opus 4.7", modelID: "claude-opus-4-7", want: maxTokensOpusFamily4},
+		{name: "opus 4.5", modelID: "claude-opus-4-5", want: maxTokensOpusFamily4},
+		{name: "haiku 4.5", modelID: "claude-haiku-4-5", want: maxTokensDefault},
+		{name: "3-5 sonnet", modelID: "claude-3-5-sonnet-latest", want: maxTokensDefault},
+		{name: "unknown", modelID: "napoleon-1", want: maxTokensDefault},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, defaultMaxTokens(tt.modelID))
+		})
+	}
+}
+
+// TestBuildRequest_Thinking covers the legacy enabled+budget_tokens path
+// used for 4.5 and earlier Claude models. Model ids are pinned to 4.5 so
+// the adaptive routing doesn't intercept these cases.
+func TestBuildRequest_Thinking(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "Why does Boxer trust Napoleon?"},
+	}
+
+	t.Run("high on sonnet 4.5 sets budget 16000 and bumps max_tokens, no effort", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "enabled", msgReq.Thinking.Type)
+		assert.Equal(t, 16000, msgReq.Thinking.BudgetTokens)
+		// sonnet 4 default is 16384; budget is 16000 so default already
+		// clears the constraint without adjustment
+		assert.GreaterOrEqual(t, msgReq.MaxTokens, msgReq.Thinking.BudgetTokens+1)
+		// sonnet 4.5 isn't in the effort allowlist
+		if msgReq.OutputConfig != nil {
+			assert.Empty(t, msgReq.OutputConfig.Effort)
+		}
+	})
+
+	t.Run("medium on opus 4.5 sets budget 4000 and effort medium", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingMedium))
+		req, err := provider.BuildRequest(messages, "claude-opus-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "enabled", msgReq.Thinking.Type)
+		assert.Equal(t, 4000, msgReq.Thinking.BudgetTokens)
+		// opus 4.5 is in the effort allowlist even though it uses manual thinking
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "medium", msgReq.OutputConfig.Effort)
+	})
+
+	t.Run("high on haiku does not emit thinking", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
+		req, err := provider.BuildRequest(messages, "claude-haiku-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		assert.Nil(t, msgReq.Thinking)
+	})
+
+	t.Run("off omits thinking block on opus 4.5 but still sends low effort", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingOff))
+		req, err := provider.BuildRequest(messages, "claude-opus-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		assert.Nil(t, msgReq.Thinking)
+		// opus 4.5 is in supportsEffort; off maps to low regardless of thinking
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "low", msgReq.OutputConfig.Effort)
+	})
+
+	t.Run("off on sonnet 4.5 emits neither thinking nor effort", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingOff))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		assert.Nil(t, msgReq.Thinking)
+		// sonnet 4.5 isn't in supportsEffort, so no OutputConfig is created
+		if msgReq.OutputConfig != nil {
+			assert.Empty(t, msgReq.OutputConfig.Effort)
+		}
+	})
+
+	t.Run("tight max_tokens bumped above budget on 4.5", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingHigh),
+			WithMaxTokens(2048),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, 16000, msgReq.Thinking.BudgetTokens)
+		assert.Equal(t, 16000+maxTokensDefault, msgReq.MaxTokens)
+	})
+
+	t.Run("custom thinking budget is honored on 4.5", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingMedium),
+			WithThinkingBudget(8000),
+		)
+		req, err := provider.BuildRequest(messages, "claude-opus-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, 8000, msgReq.Thinking.BudgetTokens)
+	})
+}
+
+// TestParseAnthropicVersion covers the version-suffix regex, including the
+// distinction between "-4-6" (parseable) and "-4-20250514" (date stamp).
+func TestParseAnthropicVersion(t *testing.T) {
+	tests := []struct {
+		name      string
+		modelID   string
+		wantMajor int
+		wantMinor int
+		wantOK    bool
+	}{
+		{name: "sonnet 4.6", modelID: "claude-sonnet-4-6", wantMajor: 4, wantMinor: 6, wantOK: true},
+		{name: "opus 4.7", modelID: "claude-opus-4-7", wantMajor: 4, wantMinor: 7, wantOK: true},
+		{name: "sonnet 4.5", modelID: "claude-sonnet-4-5", wantMajor: 4, wantMinor: 5, wantOK: true},
+		{name: "sonnet 4.6 with date suffix", modelID: "claude-sonnet-4-6-20260101", wantMajor: 4, wantMinor: 6, wantOK: true},
+		{name: "4.0-era date snapshot", modelID: "claude-sonnet-4-20250514", wantOK: false},
+		{name: "3-7-sonnet dated", modelID: "claude-3-7-sonnet-20241022", wantMajor: 3, wantMinor: 7, wantOK: true},
+		{name: "haiku 4.5", modelID: "claude-haiku-4-5", wantMajor: 4, wantMinor: 5, wantOK: true},
+		{name: "non-claude id", modelID: "gpt-5", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			major, minor, ok := parseAnthropicVersion(tt.modelID)
+			assert.Equal(t, tt.wantOK, ok)
+			if tt.wantOK {
+				assert.Equal(t, tt.wantMajor, major)
+				assert.Equal(t, tt.wantMinor, minor)
+			}
+		})
+	}
+}
+
+// TestUseAdaptiveThinking verifies the 4.6+ routing gate.
+func TestUseAdaptiveThinking(t *testing.T) {
+	tests := []struct {
+		name    string
+		modelID string
+		want    bool
+	}{
+		{name: "sonnet 4.6", modelID: "claude-sonnet-4-6", want: true},
+		{name: "opus 4.7", modelID: "claude-opus-4-7", want: true},
+		{name: "sonnet 4.5", modelID: "claude-sonnet-4-5", want: false},
+		{name: "opus 4.0", modelID: "claude-opus-4-0", want: false},
+		{name: "3-7-sonnet", modelID: "claude-3-7-sonnet-20241022", want: false},
+		{name: "haiku 4.5", modelID: "claude-haiku-4-5", want: false},
+		{name: "date-snapshot 4.0 era", modelID: "claude-sonnet-4-20250514", want: false},
+		{name: "non-claude", modelID: "gpt-5", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, useAdaptiveThinking(tt.modelID))
+		})
+	}
+}
+
+// TestSupportsMaxEffort verifies the allowlist for the max effort tier.
+func TestSupportsMaxEffort(t *testing.T) {
+	tests := []struct {
+		name    string
+		modelID string
+		want    bool
+	}{
+		{name: "opus 4.6 max-capable", modelID: "claude-opus-4-6", want: true},
+		{name: "opus 4.7 max-capable", modelID: "claude-opus-4-7", want: true},
+		{name: "sonnet 4.6 max-capable", modelID: "claude-sonnet-4-6", want: true},
+		{name: "mythos preview max-capable", modelID: "claude-mythos-preview", want: true},
+		{name: "sonnet 4.7 hypothetical falls back", modelID: "claude-sonnet-4-7", want: false},
+		{name: "haiku 4.6 hypothetical falls back", modelID: "claude-haiku-4-6", want: false},
+		{name: "sonnet 4.5 not max", modelID: "claude-sonnet-4-5", want: false},
+		{name: "non-claude not max", modelID: "gpt-5", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, supportsMaxEffort(tt.modelID))
+		})
+	}
+}
+
+// TestEffortForLevel covers the tri-state effort mapping with and without
+// max-effort support.
+func TestEffortForLevel(t *testing.T) {
+	tests := []struct {
+		name  string
+		level common.ThinkingLevel
+		maxOK bool
+		want  string
+	}{
+		{name: "off regardless of maxOK", level: common.ThinkingOff, maxOK: true, want: "low"},
+		{name: "off on non-max", level: common.ThinkingOff, maxOK: false, want: "low"},
+		{name: "medium regardless of maxOK", level: common.ThinkingMedium, maxOK: true, want: "medium"},
+		{name: "medium on non-max", level: common.ThinkingMedium, maxOK: false, want: "medium"},
+		{name: "high upgrades to max when allowed", level: common.ThinkingHigh, maxOK: true, want: "max"},
+		{name: "high falls back to high when not allowed", level: common.ThinkingHigh, maxOK: false, want: "high"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, effortForLevel(tt.level, tt.maxOK))
+		})
+	}
+}
+
+// TestBuildRequest_ThinkingAdaptive covers the 4.6+ adaptive path: the
+// thinking block carries type=adaptive plus an effort string (never a
+// budget_tokens value), and max_tokens is not bumped because adaptive
+// self-manages its reasoning budget.
+func TestBuildRequest_ThinkingAdaptive(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "Explain the windmill's collapse."},
+	}
+
+	t.Run("high on sonnet 4.6 maps to max on output_config", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
+		assert.Equal(t, 0, msgReq.Thinking.BudgetTokens)
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "max", msgReq.OutputConfig.Effort)
+	})
+
+	t.Run("high on opus 4.7 maps to max on output_config", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
+		req, err := provider.BuildRequest(messages, "claude-opus-4-7", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "max", msgReq.OutputConfig.Effort)
+	})
+
+	t.Run("medium on sonnet 4.6 maps to medium on output_config", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingMedium))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "medium", msgReq.OutputConfig.Effort)
+	})
+
+	t.Run("off on sonnet 4.6 still sends adaptive with low effort", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingOff))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "low", msgReq.OutputConfig.Effort)
+	})
+
+	t.Run("adaptive does not bump max_tokens on tight setting", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingHigh),
+			WithMaxTokens(2048),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, 2048, msgReq.MaxTokens)
+	})
+
+	t.Run("high on adaptive-but-not-max falls back to high", func(t *testing.T) {
+		// hypothetical future sonnet past 4.6: adaptive routing kicks in
+		// (minor=7 >= 6) but the model is not in the max-effort allowlist.
+		// this also exercises the adaptive-thinking-without-effort branch
+		// since sonnet-4-7 isn't in supportsEffort either
+		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-7", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "adaptive", msgReq.Thinking.Type)
+		// sonnet-4-7 isn't yet in supportsEffort, so no effort is sent
+		if msgReq.OutputConfig != nil {
+			assert.Empty(t, msgReq.OutputConfig.Effort)
+		}
+	})
+}
+
+// TestBuildRequest_OutputConfig verifies that WithSchema wires the schema
+// onto Anthropic's output_config envelope with strict mode preserved.
+func TestBuildRequest_OutputConfig(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "Return the quote"},
+	}
+	schema := []byte(`{"type":"object","properties":{"quote":{"type":"string"}}}`)
+
+	opts := NewGenerateOptions(WithSchema("animal_quote", schema))
+	req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+	require.NoError(t, err)
+
+	msgReq, ok := req.(*MessagesRequest)
+	require.True(t, ok)
+	require.NotNil(t, msgReq.OutputConfig)
+	require.NotNil(t, msgReq.OutputConfig.Format)
+
+	fmt := msgReq.OutputConfig.Format
+	assert.Equal(t, "json_schema", fmt.Type)
+	assert.Equal(t, "animal_quote", fmt.Name)
+	assert.JSONEq(t, string(schema), string(fmt.Schema))
+	require.NotNil(t, fmt.Strict)
+	assert.True(t, *fmt.Strict)
+}
+
+// TestBuildRequest_PerModelMaxTokens covers the per-model defaults picked
+// when the caller hasn't set MaxTokens.
+func TestBuildRequest_PerModelMaxTokens(t *testing.T) {
+	provider := New()
+	messages := []common.Message{{Role: "user", Content: "hello"}}
+
+	tests := []struct {
+		name    string
+		modelID string
+		want    int
+	}{
+		{name: "sonnet 4.6 default", modelID: "claude-sonnet-4-6", want: maxTokensSonnetFamily4},
+		{name: "opus 4.7 default", modelID: "claude-opus-4-7", want: maxTokensOpusFamily4},
+		{name: "haiku default", modelID: "claude-haiku-4-5", want: maxTokensDefault},
+		{name: "legacy sonnet default", modelID: "claude-3-5-sonnet-latest", want: maxTokensDefault},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := provider.BuildRequest(messages, tt.modelID, nil, slog.Default())
+			require.NoError(t, err)
+			msgReq, ok := req.(*MessagesRequest)
+			require.True(t, ok)
+			assert.Equal(t, tt.want, msgReq.MaxTokens)
+		})
+	}
+
+	t.Run("caller MaxTokens wins", func(t *testing.T) {
+		opts := NewGenerateOptions(WithMaxTokens(1234))
+		req, err := provider.BuildRequest(messages, "claude-opus-4-7", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		assert.Equal(t, 1234, msgReq.MaxTokens)
+	})
+}
+
+// TestParseResponse_ThinkingBlocks covers Anthropic's content-block thinking
+// being re-inlined as a <think> prefix so the downstream filter treats it
+// the same as any other provider's inline-tag thinking.
+func TestParseResponse_ThinkingBlocks(t *testing.T) {
+	provider := New()
+
+	body := `{
+		"id": "msg_abc",
+		"type": "message",
+		"role": "assistant",
+		"content": [
+			{"type": "thinking", "thinking": "Snowball drew the plans for the windmill."},
+			{"type": "text", "text": "Four legs good, two legs bad."}
+		],
+		"model": "claude-opus-4-7",
+		"stop_reason": "end_turn",
+		"usage": {"input_tokens": 12, "output_tokens": 7}
+	}`
+
+	content, usage, err := provider.ParseResponse([]byte(body), slog.Default())
+	require.NoError(t, err)
+	assert.Equal(t,
+		"<think>Snowball drew the plans for the windmill.</think>\nFour legs good, two legs bad.",
+		content,
+	)
+	require.NotNil(t, usage)
+	assert.Equal(t, 12, usage.PromptTokens)
+	assert.Equal(t, 7, usage.CompletionTokens)
+	assert.Equal(t, 19, usage.TotalTokens)
+}
+
+// TestParseResponse_MultipleThinkingBlocks confirms that multiple thinking
+// blocks are concatenated before being wrapped in a single <think> tag.
+func TestParseResponse_MultipleThinkingBlocks(t *testing.T) {
+	provider := New()
+
+	body := `{
+		"id": "msg_abc",
+		"type": "message",
+		"role": "assistant",
+		"content": [
+			{"type": "thinking", "thinking": "First, consider the cowshed."},
+			{"type": "thinking", "thinking": " Then the windmill."},
+			{"type": "text", "text": "Boxer will work harder."}
+		],
+		"model": "claude-opus-4-7",
+		"stop_reason": "end_turn",
+		"usage": {"input_tokens": 1, "output_tokens": 1}
+	}`
+
+	content, _, err := provider.ParseResponse([]byte(body), slog.Default())
+	require.NoError(t, err)
+	assert.Equal(t,
+		"<think>First, consider the cowshed. Then the windmill.</think>\nBoxer will work harder.",
+		content,
+	)
+}
+
+// TestParseResponse_NoThinking confirms that plain text responses pass
+// through untouched when no thinking blocks are present.
+func TestParseResponse_NoThinking(t *testing.T) {
+	provider := New()
+
+	body := `{
+		"id": "msg_abc",
+		"type": "message",
+		"role": "assistant",
+		"content": [
+			{"type": "text", "text": "All animals are equal."}
+		],
+		"model": "claude-opus-4-7",
+		"stop_reason": "end_turn",
+		"usage": {"input_tokens": 3, "output_tokens": 5}
+	}`
+
+	content, _, err := provider.ParseResponse([]byte(body), slog.Default())
+	require.NoError(t, err)
+	assert.Equal(t, "All animals are equal.", content)
+}
+
+// TestBuildOptions_ThinkingAndSchema verifies BuildOptions reads the
+// thinking level and response schema out of config.Parameters and wires
+// them onto the returned GenerateOptions.
+func TestBuildOptions_ThinkingAndSchema(t *testing.T) {
+	provider := New()
+	schema := `{"type":"object","properties":{"a":{"type":"integer"}}}`
+
+	cfg := &config.Config{
+		Parameters: config.Parameters{
+			Thinking:       "high",
+			ResponseSchema: schema,
+		},
+		Format: config.Format{},
+	}
+
+	opts := provider.BuildOptions(cfg)
+	require.Len(t, opts, 1)
+	ga, ok := opts[0].(*GenerateOptions)
+	require.True(t, ok)
+
+	assert.Equal(t, common.ThinkingHigh, ga.Thinking)
+	require.NotNil(t, ga.ResponseFormat)
+	assert.Equal(t, "json_schema", ga.ResponseFormat.Type)
+	assert.Equal(t, "response", ga.ResponseFormat.Name)
+	assert.JSONEq(t, schema, string(ga.ResponseFormat.Schema))
+	require.NotNil(t, ga.ResponseFormat.Strict)
+	assert.True(t, *ga.ResponseFormat.Strict)
+}
+
+// TestSupportsEffort covers the allowlist for the output_config.effort
+// parameter. note that opus 4.5 supports effort even though it uses the
+// manual (enabled+budget_tokens) thinking shape.
+func TestSupportsEffort(t *testing.T) {
+	tests := []struct {
+		name    string
+		modelID string
+		want    bool
+	}{
+		{name: "opus 4.5 supports effort", modelID: "claude-opus-4-5", want: true},
+		{name: "opus 4.6 supports effort", modelID: "claude-opus-4-6", want: true},
+		{name: "opus 4.7 supports effort", modelID: "claude-opus-4-7", want: true},
+		{name: "sonnet 4.6 supports effort", modelID: "claude-sonnet-4-6", want: true},
+		{name: "mythos preview supports effort", modelID: "claude-mythos-preview", want: true},
+		{name: "sonnet 4.5 does not support effort", modelID: "claude-sonnet-4-5", want: false},
+		{name: "haiku 4.5 does not support effort", modelID: "claude-haiku-4-5", want: false},
+		{name: "3-7-sonnet does not support effort", modelID: "claude-3-7-sonnet-20241022", want: false},
+		{name: "non-claude does not support effort", modelID: "gpt-5", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, supportsEffort(tt.modelID))
+		})
+	}
+}
+
+// TestBuildRequest_EffortOnOpus45 confirms that opus 4.5 gets both manual
+// thinking (enabled+budget_tokens) and output_config.effort together —
+// effort is independent of the adaptive-thinking routing.
+func TestBuildRequest_EffortOnOpus45(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "Describe Snowball's role on the farm."},
+	}
+
+	t.Run("medium emits manual thinking plus medium effort", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingMedium))
+		req, err := provider.BuildRequest(messages, "claude-opus-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "enabled", msgReq.Thinking.Type)
+		assert.Equal(t, 4000, msgReq.Thinking.BudgetTokens)
+
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "medium", msgReq.OutputConfig.Effort)
+		// no schema requested, so format stays nil
+		assert.Nil(t, msgReq.OutputConfig.Format)
+	})
+
+	t.Run("high on opus 4.5 falls back to high effort (max is 4.6+)", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingHigh))
+		req, err := provider.BuildRequest(messages, "claude-opus-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+
+		require.NotNil(t, msgReq.Thinking)
+		assert.Equal(t, "enabled", msgReq.Thinking.Type)
+		assert.Equal(t, 16000, msgReq.Thinking.BudgetTokens)
+
+		require.NotNil(t, msgReq.OutputConfig)
+		assert.Equal(t, "high", msgReq.OutputConfig.Effort)
+	})
+}
+
+// TestBuildRequest_EffortAndSchemaCoexist confirms that a request with
+// both a schema (WithSchema) and a thinking level populates both fields
+// of output_config: format for the schema, effort for the thinking lever.
+func TestBuildRequest_EffortAndSchemaCoexist(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "Return the windmill quote."},
+	}
+	schema := []byte(`{"type":"object","properties":{"quote":{"type":"string"}}}`)
+
+	opts := NewGenerateOptions(
+		WithThinking(common.ThinkingHigh),
+		WithSchema("animal_quote", schema),
+	)
+	req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+	require.NoError(t, err)
+	msgReq, ok := req.(*MessagesRequest)
+	require.True(t, ok)
+
+	require.NotNil(t, msgReq.Thinking)
+	assert.Equal(t, "adaptive", msgReq.Thinking.Type)
+
+	require.NotNil(t, msgReq.OutputConfig)
+	// both output_config fields are populated together
+	assert.Equal(t, "max", msgReq.OutputConfig.Effort)
+	require.NotNil(t, msgReq.OutputConfig.Format)
+	assert.Equal(t, "json_schema", msgReq.OutputConfig.Format.Type)
+	assert.Equal(t, "animal_quote", msgReq.OutputConfig.Format.Name)
+	assert.JSONEq(t, string(schema), string(msgReq.OutputConfig.Format.Schema))
+}
+
+// TestBuildRequest_TemperatureForcedWhenThinking confirms Anthropic's
+// requirement that temperature=1 whenever the thinking block is present,
+// regardless of what temperature the caller set. Also confirms that
+// temperature passes through unchanged when thinking is not active.
+func TestBuildRequest_TemperatureForcedWhenThinking(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "Consider the windmill's collapse."},
+	}
+
+	t.Run("adaptive on sonnet 4.6 forces temperature 1 over caller's 0.7", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingHigh),
+			WithTemperature(0.7),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.Temperature)
+		assert.Equal(t, 1.0, *msgReq.Temperature)
+	})
+
+	t.Run("enabled on sonnet 4.5 forces temperature 1", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingMedium),
+			WithTemperature(0.2),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.Temperature)
+		assert.Equal(t, 1.0, *msgReq.Temperature)
+	})
+
+	t.Run("adaptive on sonnet 4.6 with no caller temp still sets 1", func(t *testing.T) {
+		opts := NewGenerateOptions(WithThinking(common.ThinkingMedium))
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.Temperature)
+		assert.Equal(t, 1.0, *msgReq.Temperature)
+	})
+
+	t.Run("off on sonnet 4.5 preserves caller temperature", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingOff),
+			WithTemperature(0.3),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		// sonnet 4.5 + off sends no thinking block, so caller's temperature wins
+		assert.Nil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.Temperature)
+		assert.Equal(t, 0.3, *msgReq.Temperature)
+	})
+
+	t.Run("haiku with thinking-high never gets a thinking block or forced temp", func(t *testing.T) {
+		// haiku is outside supportsThinking so the thinking block is never
+		// set; caller's temperature passes through untouched
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingHigh),
+			WithTemperature(0.4),
+		)
+		req, err := provider.BuildRequest(messages, "claude-haiku-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		assert.Nil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.Temperature)
+		assert.Equal(t, 0.4, *msgReq.Temperature)
+	})
+
+	t.Run("adaptive thinking drops top_p to satisfy temp/top_p exclusion", func(t *testing.T) {
+		// Anthropic rejects requests that set both temperature and top_p,
+		// and we force temperature=1 for thinking, so top_p must be dropped
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingHigh),
+			WithTemperature(0.7),
+			WithTopP(0.95),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.Temperature)
+		assert.Equal(t, 1.0, *msgReq.Temperature)
+		assert.Nil(t, msgReq.TopP)
+	})
+
+	t.Run("enabled thinking on 4.5 also drops top_p", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingMedium),
+			WithTopP(0.9),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Nil(t, msgReq.TopP)
+	})
+
+	t.Run("no thinking preserves top_p", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingOff),
+			WithTopP(0.85),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		assert.Nil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.TopP)
+		assert.Equal(t, 0.85, *msgReq.TopP)
+	})
 }

@@ -10,6 +10,11 @@ type GenerateOptions struct {
 	TopK          *int     // integer for top-k sampling (only used by some Anthropic models)
 	System        string   // system prompt for Anthropic (separate from messages)
 	StopSequences []string // anthropic uses "stop_sequences" instead of "stop"
+
+	// ThinkingBudget overrides the budget_tokens value Anthropic sees when
+	// extended thinking is enabled. When zero, the adapter derives a budget
+	// from the cross-provider ThinkingLevel (medium: 4000, high: 16000)
+	ThinkingBudget int
 }
 
 // GenerateOption configures Anthropic-specific generation parameters
@@ -42,6 +47,32 @@ func WithSystem(system string) GenerateOption {
 func WithStopSequences(sequences []string) GenerateOption {
 	return func(c *GenerateOptions) {
 		c.StopSequences = sequences
+	}
+}
+
+// WithThinkingBudget overrides the budget_tokens value Anthropic receives
+// when extended thinking is enabled. A value of zero lets the adapter
+// pick a default based on the cross-provider ThinkingLevel
+func WithThinkingBudget(budget int) GenerateOption {
+	return func(c *GenerateOptions) {
+		c.ThinkingBudget = budget
+	}
+}
+
+// WithThinking sets the cross-provider thinking level. Anthropic's adapter
+// translates this into a thinking block with an appropriate budget
+func WithThinking(level common.ThinkingLevel) GenerateOption {
+	return func(c *GenerateOptions) {
+		common.WithThinking(level)(&c.GenerateOptions)
+	}
+}
+
+// WithSchema requests schema-constrained structured output via Anthropic's
+// output_config envelope. The schema is forwarded to the common layer and
+// the adapter wires it onto the wire-level OutputConfig at request build
+func WithSchema(name string, schema []byte) GenerateOption {
+	return func(c *GenerateOptions) {
+		common.WithSchema(name, schema)(&c.GenerateOptions)
 	}
 }
 
