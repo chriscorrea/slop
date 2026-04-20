@@ -1345,4 +1345,49 @@ func TestBuildRequest_TemperatureForcedWhenThinking(t *testing.T) {
 		require.NotNil(t, msgReq.Temperature)
 		assert.Equal(t, 0.4, *msgReq.Temperature)
 	})
+
+	t.Run("adaptive thinking drops top_p to satisfy temp/top_p exclusion", func(t *testing.T) {
+		// Anthropic rejects requests that set both temperature and top_p,
+		// and we force temperature=1 for thinking, so top_p must be dropped
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingHigh),
+			WithTemperature(0.7),
+			WithTopP(0.95),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-6", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.Temperature)
+		assert.Equal(t, 1.0, *msgReq.Temperature)
+		assert.Nil(t, msgReq.TopP)
+	})
+
+	t.Run("enabled thinking on 4.5 also drops top_p", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingMedium),
+			WithTopP(0.9),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		require.NotNil(t, msgReq.Thinking)
+		assert.Nil(t, msgReq.TopP)
+	})
+
+	t.Run("no thinking preserves top_p", func(t *testing.T) {
+		opts := NewGenerateOptions(
+			WithThinking(common.ThinkingOff),
+			WithTopP(0.85),
+		)
+		req, err := provider.BuildRequest(messages, "claude-sonnet-4-5", opts, slog.Default())
+		require.NoError(t, err)
+		msgReq, ok := req.(*MessagesRequest)
+		require.True(t, ok)
+		assert.Nil(t, msgReq.Thinking)
+		require.NotNil(t, msgReq.TopP)
+		assert.Equal(t, 0.85, *msgReq.TopP)
+	})
 }

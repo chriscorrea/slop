@@ -394,9 +394,10 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 	}
 
 	// Anthropic only accepts temperature=1 whenever the thinking block is
-	// present (adaptive or enabled). override a caller-set value with a
-	// debug log so a --temperature 0.7 default survives switching models
-	// that don't use thinking
+	// present (adaptive or enabled), and models like Sonnet 4.6 reject
+	// requests that set both temperature and top_p. force temperature to 1
+	// and drop top_p so a --temperature/--top-p default survives switching
+	// models that don't use thinking
 	if requestBody.Thinking != nil {
 		if requestBody.Temperature != nil && *requestBody.Temperature != 1 && logger != nil {
 			logger.Debug("overriding temperature to 1 for extended thinking",
@@ -406,6 +407,14 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 		}
 		one := 1.0
 		requestBody.Temperature = &one
+
+		if requestBody.TopP != nil && logger != nil {
+			logger.Debug("dropping top_p to satisfy anthropic's temperature/top_p exclusion",
+				"model", modelName,
+				"original_top_p", *requestBody.TopP,
+			)
+		}
+		requestBody.TopP = nil
 	}
 
 	// structured output: wrap json_schema requests in Anthropic's
