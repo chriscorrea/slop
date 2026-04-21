@@ -1,38 +1,38 @@
+version: "2"
+
 run:
   timeout: 3m
-  go: '1.24'
+  go: '1.26'
 
 linters:
-  disable-all: true
+  default: none
   enable:
-    # Linters from your original 'linters' section
     - govet
     - errcheck
     - staticcheck
     - unused
     - ineffassign
     - gosec
-    - gosimple
     - gocritic
-    # Linters moved from the incorrect 'formatters' section
+  exclusions:
+    rules:
+      # ignore errcheck warnings in test files
+      - path: _test\.go
+        linters:
+          - errcheck
+
+      # ignore false positive gosec warning about weak random numbers for jitter
+      - linters:
+          - gosec
+        text: "G404: Use of weak random number generator"
+
+      # ignore file permission warnings for test files only
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G306: Expect WriteFile permissions to be 0600 or less"
+
+formatters:
+  enable:
     - gofmt
     - goimports
-
-issues:
-  max-same-issues: 5
-  exclude-rules:
-    # ignore errcheck warnings in test files
-    - path: _test\.go
-      linters:
-        - errcheck
-
-    # ignore false positive gosec warning about weak random numbers for jitter
-    - linters:
-        - gosec
-      text: "G404: Use of weak random number generator"
-
-    # ignore file permission warnings for test files only
-    - path: _test\.go
-      linters:
-        - gosec
-      text: "G306: Expect WriteFile permissions to be 0600 or less"
