@@ -17,10 +17,67 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/chriscorrea/slop/internal/config"
 	"github.com/chriscorrea/slop/internal/llm/common"
 )
+
+// supportsThinking reports whether the given OpenAI model ID accepts the
+// reasoning_effort parameter. Uses an exclusion list for legacy models that
+// don't support the parameter. All reasoning models (o-series) and GPT-5+
+// are assumed to support it for future compatibility
+func supportsThinking(modelID string) bool {
+	id := strings.ToLower(strings.TrimSpace(modelID))
+	if id == "" {
+		return false
+	}
+
+	// exclude legacy reasoning models that don't support reasoning_effort
+	switch {
+	case strings.HasPrefix(id, "o1-preview"),
+		strings.HasPrefix(id, "o1-mini"):
+		return false
+	}
+
+	// exclude non-reasoning GPT-4 models
+	switch {
+	case strings.HasPrefix(id, "gpt-4.1"),
+		strings.HasPrefix(id, "gpt-4o"),
+		strings.HasPrefix(id, "gpt-4-turbo"),
+		id == "gpt-4":
+		return false
+	}
+
+	// all o-series models (o1, o3, o4, etc.) support reasoning_effort
+	if strings.HasPrefix(id, "o") && len(id) > 1 && id[1] >= '1' && id[1] <= '9' {
+		return true
+	}
+
+	// assume GPT-5 and beyond support reasoning_effort
+	if versionPart, ok := strings.CutPrefix(id, "gpt-"); ok {
+		if len(versionPart) > 0 && versionPart[0] >= '5' && versionPart[0] <= '9' {
+			return true
+		}
+	}
+
+	// unknown or legacy models don't support reasoning_effort
+	return false
+}
+
+// translateThinkingLevel maps the common ThinkingLevel to OpenAI's
+// reasoning_effort string. ThinkingOff returns "" so callers can skip sending
+// the field
+func translateThinkingLevel(level common.ThinkingLevel) string {
+	switch level {
+	case common.ThinkingMedium:
+		return "medium"
+	case common.ThinkingHigh:
+		return "high"
+	default:
+		return ""
+	}
+}
 
 // Provider implements the unified registry.Provider interface for OpenAI
 type Provider struct{}
@@ -93,7 +150,28 @@ func (p *Provider) BuildOptions(cfg *config.Config) []interface{} {
 		functionalOpts = append(functionalOpts, WithJSONFormat())
 	}
 
+	// translate thinking into reasoning_effort
+	if level, err := common.ParseThinkingLevel(cfg.Parameters.Thinking); err == nil {
+		if effort := translateThinkingLevel(level); effort != "" {
+			functionalOpts = append(functionalOpts, WithReasoningEffort(effort))
+		}
+	}
+
+	// schema-constrained structured output — ResponseSchema is pre-resolved
+	// inline JSON by the config manager
+	if schema := strings.TrimSpace(cfg.Parameters.ResponseSchema); schema != "" {
+		functionalOpts = append(functionalOpts, withCommonSchema("response", []byte(schema)))
+	}
+
 	return []interface{}{NewGenerateOptions(functionalOpts...)}
+}
+
+// withCommonSchema adapts the common WithSchema option into the OpenAI
+// GenerateOption signature so it can be applied alongside provider-specific options
+func withCommonSchema(name string, schema []byte) GenerateOption {
+	return func(c *GenerateOptions) {
+		common.WithSchema(name, schema)(&c.GenerateOptions)
+	}
 }
 
 // RequiresAPIKey returns true since OpenAI requires an API key
@@ -155,16 +233,61 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 		requestBody.Seed = config.Seed
 	}
 	if len(config.Tools) > 0 {
+		// validate every tool before sending — the API rejects requests with
+		// unnamed tools or malformed parameter schemas, so fail fast if invalid
+		for i, tool := range config.Tools {
+			if strings.TrimSpace(tool.Function.Name) == "" {
+				return nil, fmt.Errorf("tool at index %d is missing a function name", i)
+			}
+			if tool.Function.Parameters != nil {
+				// if caller passed raw JSON bytes, validate them directly so
+				// bad JSON is surfaced by ValidateJSONSchema rather than by
+				// encoding/json's stricter RawMessage check
+				if raw, ok := tool.Function.Parameters.(json.RawMessage); ok {
+					if err := common.ValidateJSONSchema(raw); err != nil {
+						return nil, fmt.Errorf("tool %q has invalid parameters schema: %w", tool.Function.Name, err)
+					}
+				} else {
+					paramsBytes, err := json.Marshal(tool.Function.Parameters)
+					if err != nil {
+						return nil, fmt.Errorf("tool %q has parameters that cannot be marshaled: %w", tool.Function.Name, err)
+					}
+					if err := common.ValidateJSONSchema(paramsBytes); err != nil {
+						return nil, fmt.Errorf("tool %q has invalid parameters schema: %w", tool.Function.Name, err)
+					}
+				}
+			}
+		}
 		requestBody.Tools = config.Tools
 	}
 	if config.ToolChoice != nil {
 		requestBody.ToolChoice = config.ToolChoice
 	}
 
-	// handle structured output if requested
+	// reasoning_effort is only accepted by GPT-5 thinking variants and the
+	// o-series. For other models silently no-op so users can keep a global
+	// thinking default without errors when switching providers/models
+	if config.ReasoningEffort != nil && supportsThinking(modelName) {
+		requestBody.ReasoningEffort = config.ReasoningEffort
+	}
+
+	// map structured output into OpenAI's wire shape
 	if config.ResponseFormat != nil {
-		requestBody.ResponseFormat = &common.ResponseFormat{
-			Type: config.ResponseFormat.Type,
+		switch config.ResponseFormat.Type {
+		case "json_schema":
+			requestBody.ResponseFormat = &chatResponseFormat{
+				Type: "json_schema",
+				JSONSchema: &chatJSONSchemaSpec{
+					Name:   config.ResponseFormat.Name,
+					Schema: config.ResponseFormat.Schema,
+					Strict: config.ResponseFormat.Strict,
+				},
+			}
+		default:
+			// preserve legacy json_object behavior (and any other simple type)
+			requestBody.ResponseFormat = &chatResponseFormat{
+				Type: config.ResponseFormat.Type,
+			}
 		}
 	}
 

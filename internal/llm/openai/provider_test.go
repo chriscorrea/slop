@@ -398,6 +398,288 @@ func TestProvider_CustomizeRequest(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestSupportsThinking(t *testing.T) {
+	tests := []struct {
+		name    string
+		modelID string
+		want    bool
+	}{
+		// reasoning models that support reasoning_effort
+		{"gpt-5.4", "gpt-5.4", true},
+		{"gpt-5.4-mini", "gpt-5.4-mini", true},
+		{"gpt-5", "gpt-5", true},
+		{"o1", "o1", true},
+		{"o1-2024-12-05", "o1-2024-12-05", true},
+		{"o3-mini", "o3-mini", true},
+		{"o4-preview", "o4-preview", true},
+		{"mixed case o3", "O3-Mini", true},
+
+		// legacy reasoning models that DON'T support reasoning_effort
+		{"o1-preview", "o1-preview", false},
+		{"o1-mini", "o1-mini", false},
+		{"o1-preview-2024-09-12", "o1-preview-2024-09-12", false},
+		{"o1-mini-2024-09-12", "o1-mini-2024-09-12", false},
+
+		// non-reasoning models
+		{"gpt-4o", "gpt-4o", false},
+		{"gpt-3.5-turbo", "gpt-3.5-turbo", false},
+		{"empty", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := supportsThinking(tt.modelID)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestProvider_BuildRequest_ReasoningEffort(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "four legs good, two legs bad"},
+	}
+
+	tests := []struct {
+		name          string
+		model         string
+		thinking      common.ThinkingLevel
+		wantEffortSet bool
+		wantEffort    string
+	}{
+		{
+			name:          "gpt-5.4 gets high",
+			model:         "gpt-5.4-mini",
+			thinking:      common.ThinkingHigh,
+			wantEffortSet: true,
+			wantEffort:    "high",
+		},
+		{
+			name:          "o1 gets medium",
+			model:         "o1",
+			thinking:      common.ThinkingMedium,
+			wantEffortSet: true,
+			wantEffort:    "medium",
+		},
+		{
+			name:          "o3 gets medium",
+			model:         "o3-mini",
+			thinking:      common.ThinkingMedium,
+			wantEffortSet: true,
+			wantEffort:    "medium",
+		},
+		{
+			name:          "o1-preview is silently skipped (legacy model)",
+			model:         "o1-preview",
+			thinking:      common.ThinkingHigh,
+			wantEffortSet: false,
+		},
+		{
+			name:          "o1-mini is silently skipped (legacy model)",
+			model:         "o1-mini",
+			thinking:      common.ThinkingHigh,
+			wantEffortSet: false,
+		},
+		{
+			name:          "gpt-4o is silently skipped even at high",
+			model:         "gpt-4o",
+			thinking:      common.ThinkingHigh,
+			wantEffortSet: false,
+		},
+		{
+			name:          "gpt-3.5-turbo is silently skipped",
+			model:         "gpt-3.5-turbo",
+			thinking:      common.ThinkingHigh,
+			wantEffortSet: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			effort := translateThinkingLevel(tt.thinking)
+			opts := NewGenerateOptions(WithReasoningEffort(effort))
+
+			req, err := provider.BuildRequest(messages, tt.model, opts, slog.Default())
+			require.NoError(t, err)
+
+			chatReq, ok := req.(*ChatRequest)
+			require.True(t, ok)
+
+			if tt.wantEffortSet {
+				require.NotNil(t, chatReq.ReasoningEffort)
+				assert.Equal(t, tt.wantEffort, *chatReq.ReasoningEffort)
+			} else {
+				assert.Nil(t, chatReq.ReasoningEffort)
+			}
+		})
+	}
+}
+
+func TestProvider_BuildOptions_ThinkingAndSchema(t *testing.T) {
+	provider := New()
+
+	schemaJSON := `{"type":"object","properties":{"quote":{"type":"string"}},"required":["quote"]}`
+	cfg := &config.Config{
+		Parameters: config.Parameters{
+			Thinking:       "high",
+			ResponseSchema: schemaJSON,
+		},
+	}
+
+	out := provider.BuildOptions(cfg)
+	require.Len(t, out, 1)
+
+	genOpts, ok := out[0].(*GenerateOptions)
+	require.True(t, ok)
+
+	require.NotNil(t, genOpts.ReasoningEffort)
+	assert.Equal(t, "high", *genOpts.ReasoningEffort)
+
+	require.NotNil(t, genOpts.ResponseFormat)
+	assert.Equal(t, "json_schema", genOpts.ResponseFormat.Type)
+	assert.Equal(t, "response", genOpts.ResponseFormat.Name)
+	require.NotNil(t, genOpts.ResponseFormat.Strict)
+	assert.True(t, *genOpts.ResponseFormat.Strict)
+	assert.JSONEq(t, schemaJSON, string(genOpts.ResponseFormat.Schema))
+}
+
+func TestProvider_BuildRequest_JSONSchemaWireShape(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "describe the windmill"},
+	}
+	schemaJSON := []byte(`{"type":"object","properties":{"character":{"type":"string"},"quote":{"type":"string"}},"required":["character","quote"]}`)
+
+	opts := NewGenerateOptions()
+	common.WithSchema("character_quote", schemaJSON)(&opts.GenerateOptions)
+
+	req, err := provider.BuildRequest(messages, "gpt-4o", opts, slog.Default())
+	require.NoError(t, err)
+
+	chatReq, ok := req.(*ChatRequest)
+	require.True(t, ok)
+	require.NotNil(t, chatReq.ResponseFormat)
+	assert.Equal(t, "json_schema", chatReq.ResponseFormat.Type)
+	require.NotNil(t, chatReq.ResponseFormat.JSONSchema)
+	assert.Equal(t, "character_quote", chatReq.ResponseFormat.JSONSchema.Name)
+	require.NotNil(t, chatReq.ResponseFormat.JSONSchema.Strict)
+	assert.True(t, *chatReq.ResponseFormat.JSONSchema.Strict)
+	assert.JSONEq(t, string(schemaJSON), string(chatReq.ResponseFormat.JSONSchema.Schema))
+
+	// verify the full wire shape matches the envelope OpenAI expects
+	wire, err := json.Marshal(chatReq.ResponseFormat)
+	require.NoError(t, err)
+
+	var decoded struct {
+		Type       string `json:"type"`
+		JSONSchema struct {
+			Name   string          `json:"name"`
+			Schema json.RawMessage `json:"schema"`
+			Strict *bool           `json:"strict"`
+		} `json:"json_schema"`
+	}
+	require.NoError(t, json.Unmarshal(wire, &decoded))
+	assert.Equal(t, "json_schema", decoded.Type)
+	assert.Equal(t, "character_quote", decoded.JSONSchema.Name)
+	require.NotNil(t, decoded.JSONSchema.Strict)
+	assert.True(t, *decoded.JSONSchema.Strict)
+}
+
+func TestProvider_BuildRequest_JSONObjectLegacy(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "Boxer says I will work harder"},
+	}
+
+	opts := NewGenerateOptions(WithJSONFormat())
+	req, err := provider.BuildRequest(messages, "gpt-4o", opts, slog.Default())
+	require.NoError(t, err)
+
+	chatReq, ok := req.(*ChatRequest)
+	require.True(t, ok)
+	require.NotNil(t, chatReq.ResponseFormat)
+	assert.Equal(t, "json_object", chatReq.ResponseFormat.Type)
+	assert.Nil(t, chatReq.ResponseFormat.JSONSchema)
+}
+
+func TestProvider_BuildRequest_InvalidTool(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "Snowball designs the windmill"},
+	}
+
+	tests := []struct {
+		name    string
+		tools   []Tool
+		wantErr string
+	}{
+		{
+			name: "missing name",
+			tools: []Tool{
+				{Type: "function", Function: Function{Description: "no name here"}},
+			},
+			wantErr: "missing a function name",
+		},
+		{
+			name: "blank name",
+			tools: []Tool{
+				{Type: "function", Function: Function{Name: "   "}},
+			},
+			wantErr: "missing a function name",
+		},
+		{
+			name: "invalid parameters schema",
+			tools: []Tool{
+				{Type: "function", Function: Function{
+					Name:       "build_windmill",
+					Parameters: json.RawMessage([]byte("{not valid json")),
+				}},
+			},
+			wantErr: "invalid parameters schema",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := NewGenerateOptions(WithTools(tt.tools))
+			_, err := provider.BuildRequest(messages, "gpt-4o", opts, slog.Default())
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestProvider_BuildRequest_ValidToolParameters(t *testing.T) {
+	provider := New()
+	messages := []common.Message{
+		{Role: "user", Content: "list the commandments"},
+	}
+
+	tools := []Tool{
+		{
+			Type: "function",
+			Function: Function{
+				Name:        "build_windmill",
+				Description: "plan windmill construction",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"height": map[string]interface{}{"type": "integer"},
+					},
+				},
+			},
+		},
+	}
+	opts := NewGenerateOptions(WithTools(tools))
+	req, err := provider.BuildRequest(messages, "gpt-4o", opts, slog.Default())
+	require.NoError(t, err)
+
+	chatReq, ok := req.(*ChatRequest)
+	require.True(t, ok)
+	assert.Len(t, chatReq.Tools, 1)
+	assert.Equal(t, "build_windmill", chatReq.Tools[0].Function.Name)
+}
+
 // Integration test with mock HTTP server
 func TestProvider_Integration(t *testing.T) {
 	// create mock server
