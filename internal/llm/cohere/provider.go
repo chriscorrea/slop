@@ -87,10 +87,7 @@ func (p *Provider) BuildOptions(cfg *config.Config) []interface{} {
 		functionalOpts = append(functionalOpts, WithJSONFormat())
 	}
 
-	// wire a pre-resolved response schema through the shared helper. The
-	// canonical ResponseFormat envelope travels in the embedded common
-	// GenerateOptions; BuildRequest is responsible for translating it
-	// into Cohere's on-the-wire shape.
+	// wire a pre-resolved response schema through the shared helper
 	if cfg.Parameters.ResponseSchema != "" {
 		schema := []byte(cfg.Parameters.ResponseSchema)
 		functionalOpts = append(functionalOpts, func(c *GenerateOptions) {
@@ -99,9 +96,8 @@ func (p *Provider) BuildOptions(cfg *config.Config) []interface{} {
 	}
 
 	// Cohere selects reasoning behavior by model (e.g. command-a-reasoning-*)
-	// rather than a request-level parameter, so we intentionally do not
-	// translate ThinkingLevel here. Users control reasoning effort by
-	// choosing the appropriate model; auto-swapping would surprise them.
+	// rather than a request-level parameter
+	// TODO: Keep an eye on this in case reasoning/effort params become available
 
 	return []interface{}{NewGenerateOptions(functionalOpts...)}
 }
