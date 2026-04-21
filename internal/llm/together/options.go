@@ -137,6 +137,14 @@ func WithResponseFormat(format *common.ResponseFormat) GenerateOption {
 	}
 }
 
+// WithSchema requests schema-constrained JSON output using the json_schema
+// envelope. The shared common.WithSchema populates ResponseFormat canonically.
+func WithSchema(name string, schema []byte) GenerateOption {
+	return func(c *GenerateOptions) {
+		common.WithSchema(name, schema)(&c.GenerateOptions)
+	}
+}
+
 // GetGenerateOptions returns the embedded common GenerateOptions for validation
 func (c *GenerateOptions) GetGenerateOptions() *common.GenerateOptions {
 	return &c.GenerateOptions

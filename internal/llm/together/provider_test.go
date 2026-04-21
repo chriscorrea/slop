@@ -247,6 +247,98 @@ func TestProvider_BuildRequest(t *testing.T) {
 		if chatReq.ResponseFormat == nil || chatReq.ResponseFormat.Type != "json_object" {
 			t.Error("Expected JSON response format")
 		}
+		if chatReq.ResponseFormat != nil && chatReq.ResponseFormat.JSONSchema != nil {
+			t.Error("Expected no json_schema envelope for plain json_object")
+		}
+	})
+
+	t.Run("Builds request with json_schema envelope", func(t *testing.T) {
+		messages := []common.Message{
+			{Role: "user", Content: "Quote Boxer on the windmill"},
+		}
+		schemaBytes := []byte(`{"type":"object","properties":{"quote":{"type":"string"}},"required":["quote"]}`)
+		options := NewGenerateOptions(WithSchema("character_quote", schemaBytes))
+
+		req, err := p.BuildRequest(messages, "test-model", options, nil)
+		if err != nil {
+			t.Fatalf("Expected no error, got: %v", err)
+		}
+
+		chatReq, ok := req.(*ChatRequest)
+		if !ok {
+			t.Fatal("Expected ChatRequest type")
+		}
+		if chatReq.ResponseFormat == nil {
+			t.Fatal("Expected response_format to be set")
+		}
+		if chatReq.ResponseFormat.Type != "json_schema" {
+			t.Errorf("Expected type 'json_schema', got %q", chatReq.ResponseFormat.Type)
+		}
+		if chatReq.ResponseFormat.JSONSchema == nil {
+			t.Fatal("Expected json_schema envelope to be populated")
+		}
+		if chatReq.ResponseFormat.JSONSchema.Name != "character_quote" {
+			t.Errorf("Expected name 'character_quote', got %q", chatReq.ResponseFormat.JSONSchema.Name)
+		}
+		if chatReq.ResponseFormat.JSONSchema.Strict == nil || !*chatReq.ResponseFormat.JSONSchema.Strict {
+			t.Error("Expected strict=true on json_schema envelope")
+		}
+		if string(chatReq.ResponseFormat.JSONSchema.Schema) != string(schemaBytes) {
+			t.Errorf("Expected schema passthrough, got %s", string(chatReq.ResponseFormat.JSONSchema.Schema))
+		}
+
+		// verify the full wire shape marshals to the OpenAI-compatible envelope
+		wire, err := json.Marshal(chatReq.ResponseFormat)
+		if err != nil {
+			t.Fatalf("Failed to marshal response_format: %v", err)
+		}
+		wireStr := string(wire)
+		if !strings.Contains(wireStr, `"type":"json_schema"`) {
+			t.Errorf("Expected wire type json_schema, got %s", wireStr)
+		}
+		if !strings.Contains(wireStr, `"json_schema":{`) {
+			t.Errorf("Expected nested json_schema object, got %s", wireStr)
+		}
+		if !strings.Contains(wireStr, `"name":"character_quote"`) {
+			t.Errorf("Expected name in wire, got %s", wireStr)
+		}
+		if !strings.Contains(wireStr, `"strict":true`) {
+			t.Errorf("Expected strict:true in wire, got %s", wireStr)
+		}
+	})
+
+	t.Run("Builds request from config ResponseSchema", func(t *testing.T) {
+		schemaBytes := `{"type":"object","properties":{"slogan":{"type":"string"}}}`
+		cfg := &config.Config{
+			Parameters: config.Parameters{
+				ResponseSchema: schemaBytes,
+			},
+		}
+
+		builtOpts := p.BuildOptions(cfg)
+		if len(builtOpts) != 1 {
+			t.Fatalf("Expected 1 option, got %d", len(builtOpts))
+		}
+
+		messages := []common.Message{{Role: "user", Content: "four legs good two legs bad"}}
+		req, err := p.BuildRequest(messages, "test-model", builtOpts[0], nil)
+		if err != nil {
+			t.Fatalf("Expected no error, got: %v", err)
+		}
+
+		chatReq, ok := req.(*ChatRequest)
+		if !ok {
+			t.Fatal("Expected ChatRequest type")
+		}
+		if chatReq.ResponseFormat == nil || chatReq.ResponseFormat.Type != "json_schema" {
+			t.Fatalf("Expected json_schema response_format, got %+v", chatReq.ResponseFormat)
+		}
+		if chatReq.ResponseFormat.JSONSchema == nil {
+			t.Fatal("Expected json_schema envelope")
+		}
+		if string(chatReq.ResponseFormat.JSONSchema.Schema) != schemaBytes {
+			t.Errorf("Expected schema passthrough, got %s", string(chatReq.ResponseFormat.JSONSchema.Schema))
+		}
 	})
 }
 
