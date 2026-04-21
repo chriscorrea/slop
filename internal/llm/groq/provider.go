@@ -7,8 +7,8 @@
 //   client := groq.NewClient(apiKey)
 //   response, err := client.Generate(ctx, messages, groq.WithTemperature(0.7))
 //
-// Groq models include: llama-3.3-70b-versatile, llama-3.1-8b-instant,
-// qwen-3-32b, deepseek-r1-distill-llama-70b, and the agentic groq/compound.
+// Groq models include:llama-3.3-70b-versatile, openai/gpt-oss-120b,
+// qwen-3-32b, and the agentic groq/compound.
 
 package groq
 
@@ -23,9 +23,7 @@ import (
 	"github.com/chriscorrea/slop/internal/llm/common"
 )
 
-// compoundModelID is the canonical ID of Groq's agentic Compound model.
-// Compound performs web search and code execution under the hood, so latency
-// is variable and the adapter surfaces a debug log for visibility
+// compoundModelID is the canonical ID of Groq's agentic compound model
 const compoundModelID = "groq/compound"
 
 // Provider implements the unified registry.Provider interface for Groq
@@ -39,32 +37,29 @@ func New() *Provider {
 	return &Provider{}
 }
 
-// supportsReasoning reports whether the given Groq model ID accepts the
-// reasoning_format parameter. It returns true for the qwen-3-* and
-// deepseek-r1-distill-* families; false for Compound (which reasons natively
-// without a knob) and for plain chat models
+// supportsReasoning reports whether model ID accepts reasoning_format
+// returns true for the qwen-3-* and gpt-oss-* families (in 2026)
+// returns false for Compound (which reasons natively) and plain chat models
 func supportsReasoning(modelID string) bool {
 	id := strings.ToLower(strings.TrimSpace(modelID))
 	if id == "" {
 		return false
 	}
-	// Compound reasons natively; parameter is not applicable
+	// Compound reasons natively; param does not apply
 	if id == compoundModelID {
 		return false
 	}
 	switch {
-	case strings.HasPrefix(id, "qwen-3-"),
-		strings.HasPrefix(id, "qwen3-"),
-		strings.HasPrefix(id, "deepseek-r1-distill-"):
+	case strings.HasPrefix(id, "qwen"),
+		strings.HasPrefix(id, "gpt-oss-"):
 		return true
 	}
 	return false
 }
 
 // translateThinkingLevel maps the common ThinkingLevel to Groq's
-// reasoning_format string. "parsed" is cleanest because it returns the
-// reasoning in a separate structured field; the downstream thinking filter
-// handles inline <think> tags when models emit them directly
+// reasoning_format string. Groq's API accepts "parsed"
+// See: https://console.groq.com/docs/reasoning
 func translateThinkingLevel(level common.ThinkingLevel) string {
 	switch level {
 	case common.ThinkingMedium, common.ThinkingHigh:
@@ -186,13 +181,6 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 
 	// log the API request using common utilities
 	common.LogAPIRequest(logger, "Groq", modelName, messages, &config.GenerateOptions)
-
-	// Compound is an agentic model: it may perform web search or code
-	// execution under the hood. Surface a debug log so operators tracing
-	// latency spikes can see the expected variability
-	if strings.EqualFold(strings.TrimSpace(modelName), compoundModelID) && logger != nil {
-		logger.Debug("groq/compound may perform web search or code execution — latency varies")
-	}
 
 	// create Groq-specific request payload
 	requestBody := &ChatRequest{

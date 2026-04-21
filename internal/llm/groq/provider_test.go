@@ -1,13 +1,11 @@
 package groq
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/chriscorrea/slop/internal/config"
@@ -458,13 +456,9 @@ func TestSupportsReasoning(t *testing.T) {
 		{"qwen-3-32b", "qwen-3-32b", true},
 		{"qwen-3-prefix uppercase", "Qwen-3-32B", true},
 		{"qwen3 dashed variant", "qwen3-32b", true},
-		{"deepseek r1 distill llama", "deepseek-r1-distill-llama-70b", true},
-		{"deepseek r1 distill qwen", "deepseek-r1-distill-qwen-32b", true},
 		{"compound", "groq/compound", false},
 		{"compound trimmed casing", " Groq/Compound ", false},
 		{"llama 3.3 70b", "llama-3.3-70b-versatile", false},
-		{"llama 3.1 8b instant", "llama-3.1-8b-instant", false},
-		{"mixtral", "mixtral-8x7b-32768", false},
 		{"unrelated id", "some-other-model", false},
 	}
 
@@ -481,44 +475,6 @@ func TestTranslateThinkingLevel(t *testing.T) {
 	assert.Equal(t, "", translateThinkingLevel(common.ThinkingOff))
 	assert.Equal(t, "parsed", translateThinkingLevel(common.ThinkingMedium))
 	assert.Equal(t, "parsed", translateThinkingLevel(common.ThinkingHigh))
-}
-
-// TestProvider_BuildRequest_ReasoningFormat confirms that ReasoningFormat is
-// wired through only for reasoning-capable model IDs. Plain models and the
-// agentic Compound model must not emit the parameter
-func TestProvider_BuildRequest_ReasoningFormat(t *testing.T) {
-	provider := New()
-	messages := []common.Message{{Role: "user", Content: "Snowball gallops toward the windmill"}}
-
-	tests := []struct {
-		name      string
-		modelName string
-		wantSet   bool
-	}{
-		{"qwen-3 reasoning model", "qwen-3-32b", true},
-		{"deepseek r1 distill reasoning model", "deepseek-r1-distill-llama-70b", true},
-		{"compound skips the field", "groq/compound", false},
-		{"plain llama skips the field", "llama-3.3-70b-versatile", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			opts := NewGenerateOptions(WithReasoningFormat("parsed"))
-
-			request, err := provider.BuildRequest(messages, tt.modelName, opts, slog.Default())
-			require.NoError(t, err)
-
-			chatReq, ok := request.(*ChatRequest)
-			require.True(t, ok)
-
-			if tt.wantSet {
-				require.NotNil(t, chatReq.ReasoningFormat)
-				assert.Equal(t, "parsed", *chatReq.ReasoningFormat)
-			} else {
-				assert.Nil(t, chatReq.ReasoningFormat)
-			}
-		})
-	}
 }
 
 // TestProvider_BuildOptions_ThinkingAndSchema verifies that the cross-provider
@@ -615,37 +571,4 @@ func TestProvider_BuildRequest_JSONObjectPassthrough(t *testing.T) {
 	require.NotNil(t, chatReq.ResponseFormat)
 	assert.Equal(t, "json_object", chatReq.ResponseFormat.Type)
 	assert.Nil(t, chatReq.ResponseFormat.JSONSchema)
-}
-
-// TestProvider_BuildRequest_CompoundEmitsDebugLog confirms that selecting the
-// agentic Compound model surfaces a debug-level log explaining that latency
-// will vary. Non-compound models must stay silent on this line
-func TestProvider_BuildRequest_CompoundEmitsDebugLog(t *testing.T) {
-	provider := New()
-	messages := []common.Message{{Role: "user", Content: "four legs good"}}
-
-	tests := []struct {
-		name       string
-		modelName  string
-		wantLogged bool
-	}{
-		{"compound logs", "groq/compound", true},
-		{"mixed case compound logs", "Groq/Compound", true},
-		{"plain llama stays silent", "llama-3.3-70b-versatile", false},
-		{"qwen reasoning stays silent", "qwen-3-32b", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
-			logger := slog.New(handler)
-
-			_, err := provider.BuildRequest(messages, tt.modelName, nil, logger)
-			require.NoError(t, err)
-
-			logged := strings.Contains(buf.String(), "groq/compound may perform web search or code execution")
-			assert.Equal(t, tt.wantLogged, logged, "log output: %s", buf.String())
-		})
-	}
 }

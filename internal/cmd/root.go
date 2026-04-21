@@ -17,7 +17,7 @@ import (
 )
 
 // current version (hardcoded for now, could be replaced with build flags)
-const version = "0.1.2"
+const version = "0.2.0"
 
 // rootCmdState holds the config manager and logger for the command
 type rootCmdState struct {
@@ -91,11 +91,6 @@ func showCustomHelp(cmd *cobra.Command) {
 		}
 		fmt.Fprintln(cmd.OutOrStdout())
 	})
-
-	fmt.Fprintln(cmd.OutOrStdout())
-	fmt.Fprintln(cmd.OutOrStdout(), "Provider notes:")
-	fmt.Fprintln(cmd.OutOrStdout(), "  groq/compound is agentic: it may perform web search or code execution")
-	fmt.Fprintln(cmd.OutOrStdout(), "  under the hood, so latency can vary from call to call.")
 
 	fmt.Fprintln(cmd.OutOrStdout())
 	fmt.Fprintln(cmd.OutOrStdout(), "Use \"slop [command] --help\" for more information about core commands such as list, config, and init")

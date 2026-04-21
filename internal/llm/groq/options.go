@@ -11,9 +11,9 @@ type GenerateOptions struct {
 	PresencePenalty  *float64 // Number between -2.0 and 2.0
 	Seed             *int     // Integer seed for deterministic outputs
 
-	// ReasoningFormat controls how Groq returns reasoning traces for
-	// reasoning-capable models (e.g. "parsed" or "raw"). Only honored by
-	// qwen-3-* and deepseek-r1-distill-* families; silently ignored elsewhere
+	// ReasoningFormat controls how Groq returns reasoning traces
+	// as of 2026, only honored by qwen-3-* and deepseek-r1-distill-*
+	// (should be silently ignored by other models)
 	ReasoningFormat *string
 }
 
