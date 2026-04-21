@@ -8,11 +8,6 @@
 //   response, err := client.Generate(ctx, messages, together.WithTemperature(0.7))
 //
 // Together model documentation: https://api.together.ai/models and https://docs.together.ai/docs/models
-//
-// TODO: the default "deep" model slot for Together (see
-// internal/data/configs/models.json) is pending deploy-time verification
-// against Together's live /models endpoint. Ping the API and pin the current
-// best deep model before relying on the default in production.
 
 package together
 
