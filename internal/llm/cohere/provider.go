@@ -87,6 +87,18 @@ func (p *Provider) BuildOptions(cfg *config.Config) []interface{} {
 		functionalOpts = append(functionalOpts, WithJSONFormat())
 	}
 
+	// wire a pre-resolved response schema through the shared helper
+	if cfg.Parameters.ResponseSchema != "" {
+		schema := []byte(cfg.Parameters.ResponseSchema)
+		functionalOpts = append(functionalOpts, func(c *GenerateOptions) {
+			common.WithSchema("response", schema)(&c.GenerateOptions)
+		})
+	}
+
+	// Cohere selects reasoning behavior by model (e.g. command-a-reasoning-*)
+	// rather than a request-level parameter
+	// TODO: Keep an eye on this in case reasoning/effort params become available
+
 	return []interface{}{NewGenerateOptions(functionalOpts...)}
 }
 
@@ -148,12 +160,28 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 	if config.SafetyMode != nil {
 		requestBody.SafetyMode = config.SafetyMode
 	}
-
-	// handle structured output if requested
-	if config.ResponseFormat != nil {
-		requestBody.ResponseFormat = &ResponseFormat{
-			Type: config.ResponseFormat.Type,
+	if config.StrictTools != nil {
+		requestBody.StrictTools = config.StrictTools
+	}
+	if len(config.Documents) > 0 {
+		requestBody.Documents = config.Documents
+		// Cohere requires CONTEXTUAL safety mode when documents are present
+		// only auto-set when the caller hasn't picked a mode of their own
+		if requestBody.SafetyMode == nil {
+			contextual := "CONTEXTUAL"
+			requestBody.SafetyMode = &contextual
 		}
+	}
+
+	// handle structured output. Cohere v2 expects `type: "json_object"`
+	// with an optional `schema` sibling; the canonical ResponseFormat
+	// flavours "json_object" and "json_schema" both map to that shape.
+	if config.ResponseFormat != nil {
+		rf := &ResponseFormat{Type: "json_object"}
+		if len(config.ResponseFormat.Schema) > 0 {
+			rf.Schema = config.ResponseFormat.Schema
+		}
+		requestBody.ResponseFormat = rf
 	}
 
 	return requestBody, nil

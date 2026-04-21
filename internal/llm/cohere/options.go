@@ -7,9 +7,11 @@ type GenerateOptions struct {
 	common.GenerateOptions
 
 	// Cohere-specific parameters
-	TopK       *int    // limits token selection top K candidates
-	Seed       *int    // random seed for deterministic generation
-	SafetyMode *string // controls safety instructions ("STRICT", "CONTEXTUAL", "NONE")
+	TopK        *int       // limits token selection top K candidates
+	Seed        *int       // random seed for deterministic generation
+	SafetyMode  *string    // controls safety instructions ("STRICT", "CONTEXTUAL", "NONE")
+	StrictTools *bool      // enforces strict tool schema adherence (reduces hallucinations)
+	Documents   []Document // grounding documents for RAG-style generation
 }
 
 // GenerateOption configures Cohere-specific generation parameters
@@ -45,6 +47,24 @@ func WithSeed(seed int) GenerateOption {
 func WithSafetyMode(mode string) GenerateOption {
 	return func(c *GenerateOptions) {
 		c.SafetyMode = &mode
+	}
+}
+
+// WithStrictTools enables strict tool-schema enforcement. When true,
+// Cohere constrains tool-call arguments to match the declared schema,
+// which noticeably reduces hallucinated fields.
+func WithStrictTools(b bool) GenerateOption {
+	return func(c *GenerateOptions) {
+		c.StrictTools = &b
+	}
+}
+
+// WithDocuments attaches grounding documents for RAG-style generation.
+// Cohere requires safety_mode="CONTEXTUAL" whenever documents are set;
+// the provider's BuildRequest handles that pairing automatically.
+func WithDocuments(docs []Document) GenerateOption {
+	return func(c *GenerateOptions) {
+		c.Documents = docs
 	}
 }
 
