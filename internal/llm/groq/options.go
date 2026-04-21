@@ -10,6 +10,11 @@ type GenerateOptions struct {
 	FrequencyPenalty *float64 // Number between -2.0 and 2.0
 	PresencePenalty  *float64 // Number between -2.0 and 2.0
 	Seed             *int     // Integer seed for deterministic outputs
+
+	// ReasoningFormat controls how Groq returns reasoning traces
+	// as of 2026, only honored by qwen-3-* and deepseek-r1-distill-*
+	// (should be silently ignored by other models)
+	ReasoningFormat *string
 }
 
 // GenerateOption configures Groq-specific generation parameters
@@ -42,6 +47,15 @@ func WithPresencePenalty(penalty float64) GenerateOption {
 func WithSeed(seed int) GenerateOption {
 	return func(c *GenerateOptions) {
 		c.Seed = &seed
+	}
+}
+
+// WithReasoningFormat sets Groq's reasoning_format parameter. Currently
+// Groq's API accepts "parsed" (reasoning returned as a separate field) or
+// "raw" (inlined into content). Only reasoning-capable models honor this
+func WithReasoningFormat(format string) GenerateOption {
+	return func(c *GenerateOptions) {
+		c.ReasoningFormat = &format
 	}
 }
 
