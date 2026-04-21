@@ -404,15 +404,26 @@ func TestSupportsThinking(t *testing.T) {
 		modelID string
 		want    bool
 	}{
+		// reasoning models that support reasoning_effort
 		{"gpt-5.4", "gpt-5.4", true},
 		{"gpt-5.4-mini", "gpt-5.4-mini", true},
 		{"gpt-5", "gpt-5", true},
+		{"o1", "o1", true},
+		{"o1-2024-12-05", "o1-2024-12-05", true},
 		{"o3-mini", "o3-mini", true},
 		{"o4-preview", "o4-preview", true},
+		{"mixed case o3", "O3-Mini", true},
+
+		// legacy reasoning models that DON'T support reasoning_effort
+		{"o1-preview", "o1-preview", false},
+		{"o1-mini", "o1-mini", false},
+		{"o1-preview-2024-09-12", "o1-preview-2024-09-12", false},
+		{"o1-mini-2024-09-12", "o1-mini-2024-09-12", false},
+
+		// non-reasoning models
 		{"gpt-4o", "gpt-4o", false},
 		{"gpt-3.5-turbo", "gpt-3.5-turbo", false},
 		{"empty", "", false},
-		{"mixed case o3", "O3-Mini", true},
 	}
 
 	for _, tt := range tests {
@@ -444,11 +455,30 @@ func TestProvider_BuildRequest_ReasoningEffort(t *testing.T) {
 			wantEffort:    "high",
 		},
 		{
+			name:          "o1 gets medium",
+			model:         "o1",
+			thinking:      common.ThinkingMedium,
+			wantEffortSet: true,
+			wantEffort:    "medium",
+		},
+		{
 			name:          "o3 gets medium",
 			model:         "o3-mini",
 			thinking:      common.ThinkingMedium,
 			wantEffortSet: true,
 			wantEffort:    "medium",
+		},
+		{
+			name:          "o1-preview is silently skipped (legacy model)",
+			model:         "o1-preview",
+			thinking:      common.ThinkingHigh,
+			wantEffortSet: false,
+		},
+		{
+			name:          "o1-mini is silently skipped (legacy model)",
+			model:         "o1-mini",
+			thinking:      common.ThinkingHigh,
+			wantEffortSet: false,
 		},
 		{
 			name:          "gpt-4o is silently skipped even at high",

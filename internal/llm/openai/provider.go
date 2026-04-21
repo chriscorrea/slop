@@ -24,20 +24,44 @@ import (
 )
 
 // supportsThinking reports whether the given OpenAI model ID accepts the
-// reasoning_effort parameter. Returns true for GPT-5 thinking variants and the
-// o3 / o4 reasoning families; everything else (including gpt-4o) returns false
+// reasoning_effort parameter. Uses an exclusion list for legacy models that
+// don't support the parameter. All reasoning models (o-series) and GPT-5+
+// are assumed to support it for future compatibility
 func supportsThinking(modelID string) bool {
 	id := strings.ToLower(strings.TrimSpace(modelID))
 	if id == "" {
 		return false
 	}
+
+	// exclude legacy reasoning models that don't support reasoning_effort
 	switch {
-	case strings.HasPrefix(id, "gpt-5.4"),
-		strings.HasPrefix(id, "gpt-5"),
-		strings.HasPrefix(id, "o3"),
-		strings.HasPrefix(id, "o4"):
+	case strings.HasPrefix(id, "o1-preview"),
+		strings.HasPrefix(id, "o1-mini"):
+		return false
+	}
+
+	// exclude non-reasoning GPT-4 models
+	switch {
+	case strings.HasPrefix(id, "gpt-4.1"),
+		strings.HasPrefix(id, "gpt-4o"),
+		strings.HasPrefix(id, "gpt-4-turbo"),
+		id == "gpt-4":
+		return false
+	}
+
+	// all o-series models (o1, o3, o4, etc.) support reasoning_effort
+	if strings.HasPrefix(id, "o") && len(id) > 1 && id[1] >= '1' && id[1] <= '9' {
 		return true
 	}
+
+	// assume GPT-5 and beyond support reasoning_effort
+	if versionPart, ok := strings.CutPrefix(id, "gpt-"); ok {
+		if len(versionPart) > 0 && versionPart[0] >= '5' && versionPart[0] <= '9' {
+			return true
+		}
+	}
+
+	// unknown or legacy models don't support reasoning_effort
 	return false
 }
 
@@ -126,8 +150,7 @@ func (p *Provider) BuildOptions(cfg *config.Config) []interface{} {
 		functionalOpts = append(functionalOpts, WithJSONFormat())
 	}
 
-	// translate thinking into reasoning_effort; BuildRequest decides whether
-	// the selected model actually supports the field
+	// translate thinking into reasoning_effort
 	if level, err := common.ParseThinkingLevel(cfg.Parameters.Thinking); err == nil {
 		if effort := translateThinkingLevel(level); effort != "" {
 			functionalOpts = append(functionalOpts, WithReasoningEffort(effort))
@@ -211,8 +234,7 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 	}
 	if len(config.Tools) > 0 {
 		// validate every tool before sending — the API rejects requests with
-		// unnamed tools or malformed parameter schemas, so fail fast with a
-		// clear message here
+		// unnamed tools or malformed parameter schemas, so fail fast if invalid
 		for i, tool := range config.Tools {
 			if strings.TrimSpace(tool.Function.Name) == "" {
 				return nil, fmt.Errorf("tool at index %d is missing a function name", i)
