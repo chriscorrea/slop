@@ -32,6 +32,24 @@ linters:
           - gosec
         text: "G306: Expect WriteFile permissions to be 0600 or less"
 
+      # fake API key strings in test fixtures are not real credentials
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G101:"
+
+      # test directory creation doesn't need strict permissions
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G301:"
+
+      # file paths in providers and manifest come from internal config, not user input
+      - path: "(internal/data/providers|internal/manifest/manager)\\.go"
+        linters:
+          - gosec
+        text: "G304:"
+
 formatters:
   enable:
     - gofmt
