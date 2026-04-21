@@ -324,7 +324,7 @@ func TestSupportsReasoningEffort(t *testing.T) {
 		want    bool
 	}{
 		{"mistral-small-2603 baseline", "mistral-small-2603", true},
-		{"mistral-small newer date", "mistral-small-2610", true},
+		{"mistral-small w/ newer date", "mistral-small-2610", true},
 		{"mistral-small older than cutoff", "mistral-small-2509", false},
 		{"mistral-small with suffix", "mistral-small-2603-preview", true},
 		{"magistral-medium", "magistral-medium-2509", false},
@@ -343,6 +343,8 @@ func TestSupportsReasoningEffort(t *testing.T) {
 	}
 }
 
+func strPtr(s string) *string { return &s }
+
 func TestBuildRequest_ReasoningEffort(t *testing.T) {
 	provider := New()
 	messages := []common.Message{{Role: "user", Content: "four legs good, two legs bad"}}
@@ -355,7 +357,7 @@ func TestBuildRequest_ReasoningEffort(t *testing.T) {
 		wantEffortText string
 	}{
 		{
-			name:           "mistral-small-2603 wires high effort",
+			name:           "mistral-small-2603 high effort",
 			modelName:      "mistral-small-2603",
 			effort:         strPtr("high"),
 			wantWired:      true,
@@ -416,8 +418,7 @@ func TestBuildRequest_SchemaEnvelope(t *testing.T) {
 	assert.True(t, *chatReq.ResponseFormat.JSONSchema.Strict)
 	assert.JSONEq(t, string(schema), string(chatReq.ResponseFormat.JSONSchema.Schema))
 
-	// confirm the on-wire shape nests schema under json_schema, matching
-	// Mistral's OpenAI-compatible envelope
+	// confirm the on-wire shape nests schema under json_schema
 	wire, err := json.Marshal(chatReq.ResponseFormat)
 	assert.NoError(t, err)
 	var decoded map[string]interface{}
@@ -429,18 +430,6 @@ func TestBuildRequest_SchemaEnvelope(t *testing.T) {
 	assert.Equal(t, true, nested["strict"])
 	assert.NotNil(t, nested["schema"])
 }
-
-// TestExtractMagistralThinking_Placeholder exercises the current
-// pass-through behavior. Replace this test once the live Magistral API
-// response format has been verified and real extraction is implemented.
-func TestExtractMagistralThinking_Placeholder(t *testing.T) {
-	input := "Snowball drafts plans for the windmill before explaining the blueprint."
-	thinking, cleaned := extractMagistralThinking(input)
-	assert.Equal(t, "", thinking, "placeholder must return empty thinking until live verification")
-	assert.Equal(t, input, cleaned, "placeholder must pass content through unchanged")
-}
-
-func strPtr(s string) *string { return &s }
 
 func TestProviderInterface(t *testing.T) {
 	provider := New()

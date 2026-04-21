@@ -83,10 +83,7 @@ func (p *Provider) BuildOptions(cfg *config.Config) []interface{} {
 	}
 
 	// translate the cross-provider thinking level into Mistral's native
-	// reasoning_effort string. The field is only actually wired onto the
-	// request for models that accept it (see BuildRequest); for all other
-	// Mistral models (Magistral, legacy mistral-medium, mistral-tiny, ...)
-	// this silently no-ops and the field is dropped before send.
+	// reasoning_effort string
 	if level, err := common.ParseThinkingLevel(cfg.Parameters.Thinking); err == nil && level != common.ThinkingOff {
 		if effort := reasoningEffortForLevel(level); effort != "" {
 			functionalOpts = append(functionalOpts, WithReasoningEffort(effort))
@@ -113,12 +110,9 @@ func supportsReasoningEffort(modelID string) bool {
 	if !strings.HasPrefix(id, "mistral-small-") {
 		return false
 	}
-	// parse the trailing date-like token and require >= 2603. Unknown
-	// suffixes conservatively return false to avoid sending an unsupported
-	// field to older small variants.
+	// parse the trailing date-like token and require >= 2603.
 	suffix := strings.TrimPrefix(id, "mistral-small-")
 	// the suffix may contain additional qualifiers (e.g. "2603-preview");
-	// take the leading numeric portion.
 	end := 0
 	for end < len(suffix) && suffix[end] >= '0' && suffix[end] <= '9' {
 		end++
@@ -148,20 +142,13 @@ func reasoningEffortForLevel(level common.ThinkingLevel) string {
 }
 
 // isMagistralModel reports whether the given model id belongs to the
-// Magistral family, which emits reasoning inline in the response content.
+// Magistral family, which emits reasoning inline in response content
 func isMagistralModel(modelID string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "magistral-")
 }
 
-// extractMagistralThinking splits a Magistral response into its reasoning
-// trace and cleaned user-facing content. The exact delimiter and whether
-// Magistral uses a dedicated field, XML-style tags, or something else has
-// not been confirmed against the live API, so this is currently a
-// pass-through that returns the original content unchanged.
-//
-// TODO: verify Magistral's on-wire reasoning format against a live API
-// response before implementing real extraction. Until then, callers get
-// content unchanged and an empty thinking trace.
+// TODO: verify Magistral's on-wire reasoning format
+// til then the content is unchanged w an empty thinking trace
 func extractMagistralThinking(content string) (thinking, cleaned string) {
 	return "", content
 }
@@ -220,16 +207,12 @@ func (p *Provider) BuildRequest(messages []common.Message, modelName string, opt
 	}
 
 	// wire Mistral's native reasoning_effort field, but only for model
-	// families that actually accept it. For everything else (Magistral,
-	// legacy mistral-medium, mistral-tiny, ...) drop the field silently so
-	// a user's default thinking config survives a model swap.
+	// families that actually accept it
 	if config.ReasoningEffort != nil && supportsReasoningEffort(modelName) {
 		requestBody.ReasoningEffort = config.ReasoningEffort
 	}
 
-	// translate common.ResponseFormat into Mistral's OpenAI-compatible
-	// response_format envelope. json_object passes through unchanged;
-	// json_schema is wrapped in the nested {name, schema, strict} spec.
+	// translate common.ResponseFormat into Mistral response_format
 	if config.ResponseFormat != nil {
 		switch config.ResponseFormat.Type {
 		case "json_schema":
@@ -267,9 +250,7 @@ func (p *Provider) ParseResponse(body []byte, logger *slog.Logger) (string, *com
 
 	content := chatResp.Choices[0].Message.Content
 
-	// Magistral returns reasoning traces inline with user-facing content.
-	// Split them when the echoed model id is in the Magistral family; the
-	// extractor is currently a pass-through (see extractMagistralThinking).
+	// Magistral returns reasoning traces inline with user-facing content
 	if isMagistralModel(chatResp.Model) {
 		_, content = extractMagistralThinking(content)
 	}
